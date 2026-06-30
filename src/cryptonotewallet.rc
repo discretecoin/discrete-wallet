@@ -1,0 +1,32 @@
+IDI_ICON1               ICON    "images\karbowanez.ico"
+
+#include <windows.h>
+#include <CryptoNoteWalletConfig.h>
+
+#define VER_FILEVERSION             1,0,0,0
+#define VER_FILEVERSION_STR         "1.0.0.0\0"
+#define VER_ORIGINALFILENAME_STR    "Karbowanec.exe"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     VER_FILEVERSION
+PRODUCTVERSION  WALLET_VER_MAJOR,WALLET_VER_MINOR,WALLET_VER_PATCH,WALLET_VER_BUILD
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "FileDescription",    WALLET_DESCRIPTION
+            VALUE "FileVersion",        VER_FILEVERSION_STR
+            VALUE "InternalName",       WALLET_NAME
+            VALUE "LegalCopyright",     WALLET_COPYRIGHT
+            VALUE "OriginalFilename",   VER_ORIGINALFILENAME_STR
+            VALUE "ProductName",        WALLET_NAME
+            VALUE "ProductVersion",     WALLET_VERSION
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0422, 1251
+    END
+END

@@ -1,0 +1,265 @@
+name: Build check
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '*'            # We don't want this to run on release
+  pull_request:
+
+jobs:
+  build-windows:
+    name: Windows
+    runs-on: windows-2022
+    env:
+      BOOST_ROOT: C:\thirdparties\boost-1.86.0
+      VCINSTALLDIR: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache Boost 1.84
+        id: cache-boost
+        uses: actions/cache@v4
+        with:
+          path: C:\thirdparties\boost-1.86.0
+          key: windows-2022-boost-1.86.0-msvc143
+
+      - name: Download and Install Boost 1.84 for MSVC 14.3 (VS 2022)
+        if: steps.cache-boost.outputs.cache-hit != 'true'
+        run: |
+          $Url = "https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe"
+          $OutputPath = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\boost-installer.exe"
+          curl -L $Url -o $OutputPath
+          Start-Process -Wait -FilePath $OutputPath "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=C:\\thirdparties\\boost-1.86.0"
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.1.1
+        with:
+          version: '6.9.2'
+          host: 'windows'
+          target: 'desktop'
+          install-deps: 'true'
+
+      - name: Build
+        shell: powershell
+        id: build
+        env:
+          GIT_REDIRECT_STDERR: '2>&1'
+          VCINSTALLDIR: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\'
+        run: |
+          $build_folder = "build"
+          $krb_ver = git describe --tags --abbrev=0
+          $release_name = "Karbo-wallet-win64-${krb_ver}"
+          $release_folder = "Release"
+          echo "$release_name"
+          $qt5_cmake = "${{ env.Qt5_Dir }}/lib/cmake" -replace '[/]', '\\'
+          $env:CMAKE_PREFIX_PATH = $qt5_cmake
+          cmake -S . -B "$build_folder" -DBOOST_ROOT="$env:BOOST_ROOT" -DBOOST_INCLUDE_DIRS="$env:BOOST_ROOT/include" -G "Ninja Multi-Config" -DARCH=default
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$build_folder" --config Release --parallel --target KarbowanecWallet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cd "$build_folder"
+          $build_path = "./$build_folder"
+          mkdir "$release_folder/$release_name"
+          mkdir "$release_folder/$release_name/languages"
+          cp languages/*.qm "$release_folder/$release_name/languages/"
+          cd "$release_folder"
+          cp KarbowanecWallet.exe "$release_name/"
+          cp "C:/Program Files/OpenSSL/bin/libssl*.dll" "$release_name/"
+          cp "C:/Program Files/OpenSSL/bin/libcrypto*.dll" "$release_name/"
+          cp "../../COPYING" "$release_name/LICENSE.txt"
+          cp "../../*.bat" "$release_name/"
+          windeployqt --release KarbowanecWallet.exe --dir "$release_name/"
+          Compress-Archive -Path "$release_name/" -DestinationPath "$release_name.zip"
+          $sha256a = (Get-FileHash "$release_name.zip").Hash
+          $asset_path_archive = "./$build_folder/$release_folder/$release_name.zip"
+          echo "sha256a=${sha256a}" >> $env:GITHUB_OUTPUT
+          echo "release_name_archive=${release_name}.zip" >> $env:GITHUB_OUTPUT
+          echo "asset_path_archive=${asset_path_archive}" >> $env:GITHUB_OUTPUT
+          cd ../
+          makensis WindowsInstall.nsi
+          cd "$release_folder"
+          Compress-Archive -Path "KarbowanecWallet-Setup.exe" -DestinationPath "$release_name-install.zip"
+          $sha256i = (Get-FileHash "$release_name-install.zip").Hash
+          $asset_path_install = "./$build_folder/$release_folder/$release_name-install.zip"
+          echo "sha256i=${sha256i}" >> $env:GITHUB_OUTPUT
+          echo "release_name_install=${release_name}-install.zip" >> $env:GITHUB_OUTPUT
+          echo "asset_path_install=${asset_path_install}" >> $env:GITHUB_OUTPUT
+
+      - name: Create Archive Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.asset_path_archive }}
+          name: ${{ steps.build.outputs.release_name_archive }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.asset_path_install }}
+          name: ${{ steps.build.outputs.release_name_install }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@master
+        with:
+          submodules: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          install-deps: 'true'
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Boost (ARM64)
+        uses: MarkusJx/install-boost@v2
+        id: install-boost
+        with:
+          boost_version: 1.86.0
+          platform: macos
+          platform_version: 15
+          toolset: clang
+          arch: aarch64
+
+      - name: Install other deps
+        run: |
+          brew install gcc openssl
+
+      - name: Build
+        id: build
+        run: |
+          BOOST_ROOT=${{ steps.install-boost.outputs.BOOST_ROOT }}
+          Boost_INCLUDE_DIR=$BOOST_ROOT/include
+          Boost_LIBRARY_DIR=$BOOST_ROOT/lib
+          build_folder="build/release"
+          krb_ver=$(git describe --tags --abbrev=0)
+          release_name="Karbo-wallet-macOS-$krb_ver"
+          app_name="KarbowanecWallet.app"
+          lang_folder="/Contents/Resources/languages"
+          mkdir -p "$build_folder"
+          cd "$build_folder"
+          cmake ../.. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DBOOST_ROOT="$BOOST_ROOT" \
+            -DBoost_INCLUDE_DIR="$Boost_INCLUDE_DIR" \
+            -DBoost_LIBRARY_DIR="$Boost_LIBRARY_DIR" \
+            -DBoost_NO_SYSTEM_PATHS=ON \
+            -DBoost_USE_STATIC_LIBS=ON \
+            -DBoost_COMPILER=-clang \
+            -DBoost_ARCHITECTURE=-a64 \
+            -DBoost_THREADAPI=pthread
+          make
+          mkdir "$app_name$lang_folder"
+          cp languages/*.qm "$app_name$lang_folder"
+          macdeployqt "$app_name"
+          cpack
+          mv *.dmg "$release_name".dmg
+          sha256=$(shasum -a 256 "$release_name".dmg | awk '{ print toupper($1) }')
+          asset_path="./$build_folder/$release_name.dmg"
+          echo "sha256=${sha256}" >> $GITHUB_OUTPUT
+          echo "release_name=${release_name}.zip" >> $GITHUB_OUTPUT
+          echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
+          echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
+
+      - name: Create Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.asset_path }}
+          name: ${{ steps.build.outputs.release_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux-deb:
+    name: Linux deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          submodules: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Build deb
+        id: build
+        run: |
+          krb_ver=$(git describe --tags --abbrev=0)
+          release_name=Karbo-wallet-linux-amd64-$krb_ver
+          docker run --rm \
+            -e QT_VERSION=6.8.3 \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            ubuntu:22.04 \
+            bash ci/build-linux-artifact.sh deb "$krb_ver"
+          sha256=$(shasum -a 256 "./appimage/$release_name.deb" | awk '{print toupper($1)}')
+          asset_path="./appimage/$release_name.deb"
+          echo "sha256=${sha256}" >> $GITHUB_OUTPUT
+          echo "release_name=${release_name}.deb" >> $GITHUB_OUTPUT
+          echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
+          echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
+
+      - name: Create Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.asset_path }}
+          name: ${{ steps.build.outputs.release_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-appimage:
+    name: AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          submodules: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Build AppImage
+        id: appimage
+        run: |
+          krb_version=$(git describe --tags --abbrev=0)
+          appimage_name=Karbo-wallet-"$krb_version".AppImage
+          docker run --rm \
+            -e QT_VERSION=6.8.3 \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            ubuntu:22.04 \
+            bash ci/build-linux-artifact.sh appimage "$krb_version"
+          asset_path="./appimage/$appimage_name"
+          echo "artifact_name=${appimage_name}" >> $GITHUB_OUTPUT
+          echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
+
+      - name: Upload To GH Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.appimage.outputs.artifact_name }}
+          path: ${{ steps.appimage.outputs.asset_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

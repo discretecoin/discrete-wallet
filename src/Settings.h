@@ -1,0 +1,125 @@
+// Copyright (c) 2011-2015 The Cryptonote developers
+// Copyright (c) 2016-2026 Karbowanec developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#pragma once
+
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QObject>
+#include <QString>
+#include <QVector>
+#include <QDir>
+
+namespace WalletGui {
+
+struct NodeSetting {
+  QString host;
+  quint16 port;
+  QString path;
+  bool ssl;
+};
+
+class CommandLineParser;
+
+class Settings : public QObject {
+  Q_OBJECT
+  Q_DISABLE_COPY(Settings)
+
+public:
+  static Settings& instance();
+
+  void setCommandLineParser(CommandLineParser* _cmd_line_parser);
+  void load();
+
+  bool hasAllowLocalIpOption() const;
+  bool hasHideMyPortOption() const;
+  bool isTestnet() const;
+  bool withoutCheckpoints() const;
+  bool hasRejectDeepReorg() const;
+  quint32 rejectDeepReorg() const;
+  bool hasRunRpc() const;
+  bool hasRestrictedRpc() const;
+  QDir getDataDir() const;
+  QString getP2pBindIp() const;
+  quint16 getP2pBindPort() const;
+  quint16 getP2pExternalPort() const;
+  QString getRpcBindIp() const;
+  quint16 getRpcBindPort() const;
+  quint16 getConnectionsCount() const;
+  QStringList getExclusiveNodes() const;
+  QStringList getPeers() const;
+  QStringList getPriorityNodes() const;
+  QStringList getSeedNodes() const;
+
+  QString getWalletFile() const;
+  QString getWalletName() const;
+  QStringList getRecentWalletsList() const;
+  QString getAddressBookFile() const;
+  QString getVersion() const;
+  QString getLanguage() const;
+  QString getConnection() const;
+  QVector<NodeSetting> getRpcNodesList() const;
+  quint16 getCurrentLocalDaemonPort() const;
+  NodeSetting getCurrentRemoteNode() const;
+  quint16 getMiningThreads() const;
+  QString getCurrentTheme() const;
+
+  quint32 getRollBack() const;
+
+  bool runWalletRpc() const;
+  QString getWalletRpcBindIp() const;
+  QString getWalletRpcUser() const;
+  QString getWalletRpcPassword() const;
+  quint16 getWalletRpcBindPort() const;
+
+  bool isEncrypted() const;
+  bool isStartOnLoginEnabled() const;
+  bool isMiningOnLaunchEnabled() const;
+  bool isTrackingMode() const;
+  bool hideEverythingOnLocked() const;
+
+#ifdef Q_OS_WIN
+  bool isMinimizeToTrayEnabled() const;
+  bool isCloseToTrayEnabled() const;
+#endif
+
+  void setWalletFile(const QString& _file);
+  void setEncrypted(bool _encrypted);
+  void setTrackingMode(bool _tracking);
+  void setCurrentTheme(const QString& _theme);
+  void setLanguage(const QString& _language);
+  void setStartOnLoginEnabled(bool _enable);
+  void setMiningOnLaunchEnabled(bool _enable);
+  void setConnection(const QString& _connection);
+  void setConnectionsCount(const quint16& _count);
+  void setCurrentLocalDaemonPort(const quint16& _daemonPort);
+  void setCurrentRemoteNode(const NodeSetting &remoteNode);
+  void setRpcNodesList(const QVector<NodeSetting> &RpcNodesList);
+  void setMiningThreads(const quint16& _threads);
+#ifdef Q_OS_WIN
+  void setMinimizeToTrayEnabled(bool _enable);
+  void setCloseToTrayEnabled(bool _enable);
+#endif
+
+  void setHideEverythingOnLocked(bool _hide);
+
+  void setRunWalletRpc(bool _enable);
+  void setWalletRpcBindIp(const QString& _ip);
+  void setWalletRpcBindPort(const quint16& _port);
+  void setWalletRpcUser(const QString& _user);
+  void setWalletRpcPassword(const QString& _pwd);
+
+private:
+  QJsonObject m_settings;
+  QString m_addressBookFile;
+  CommandLineParser* m_cmdLineParser;
+
+  Settings();
+  ~Settings();
+
+  void saveSettings() const;
+};
+
+}
