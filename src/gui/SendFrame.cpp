@@ -69,7 +69,11 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   m_ui->m_priorityGridLayout->addWidget(label2, 1, 1, 1, 1, Qt::AlignHCenter);
   m_ui->m_priorityGridLayout->addWidget(label3, 1, 2, 1, 1, Qt::AlignHCenter);
   m_ui->m_priorityGridLayout->addWidget(label4, 1, 3, 1, 1, Qt::AlignHCenter);
-  m_ui->m_prioritySlider->setStyleSheet(".QSlider { margin: 0 10px; padding: 0;}");
+  // Don't set a stylesheet on the slider: under Qlementine any per-widget
+  // stylesheet disables the style's custom handle rendering, leaving a dark
+  // default handle that's invisible on the dark background. Use layout
+  // margins for the inset instead so the themed (mint) handle is kept.
+  m_ui->m_priorityGridLayout->setContentsMargins(10, 0, 10, 0);
 
   QString connection = Settings::instance().getConnection();
   if(connection.compare("remote") == 0) {
@@ -257,11 +261,16 @@ void SendFrame::sendClicked() {
     }
   }
 
-  // Miners fee
-  priorityValueChanged(m_ui->m_prioritySlider->value());
+  // Fee. Discrete has no fee market: the consensus floor is size-based
+  // (~1 atomic unit per 4 KB), and PQ transactions are large, so the correct
+  // fee can only be known once the wallet has selected inputs and built the tx.
+  // Passing 0 tells the wallet to compute that exact floor itself (see
+  // PqSender: explicitFee==0 -> auto). A non-zero fee is used verbatim and is
+  // rejected by the network if it falls below the floor, so only send one when
+  // the user explicitly overrides.
   quint64 fee = getFee();
 
-  if (fee < NodeAdapter::instance().getMinimalFee()) {
+  if (m_ui->m_manualFeeCheckBox->isChecked() && fee < NodeAdapter::instance().getMinimalFee()) {
     QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Incorrect fee value"), QtCriticalMsg));
     return;
   }
@@ -320,7 +329,10 @@ quint64 SendFrame::getFee() {
      return CurrencyAdapter::instance().parseAmount(m_ui->m_feeSpin->cleanText());
   }
 
-  return CurrencyAdapter::instance().parseAmount(QString::number(getMinimalFee() * m_ui->m_prioritySlider->value()));
+  // 0 => let the wallet compute the exact size-based PQ fee floor (see
+  // sendClicked). Discrete has no fee market, so the priority slider does not
+  // affect the fee.
+  return 0;
 }
 
 void SendFrame::sendTransactionCompleted(CryptoNote::TransactionId _id, bool _error, const QString& _errorText) {
@@ -355,8 +367,25 @@ void SendFrame::sendAllClicked() {
     return;
   }
 
-  quint64 fee = getFee();
-  quint64 amount = actualBalance - fee;
+  // "Send all" must leave room for the fee, but the exact (size-based) fee is
+  // only known once the wallet builds the tx. Reserve a conservative estimate
+  // from the number of unlocked outputs it will spend — each PQ input is ~5 KB
+  // and the floor is ~1 atomic unit per 4 KB — so the wallet's own auto-computed
+  // fee (see sendClicked) fits and at most a tiny change is left over. A manual
+  // override, if set, is used as-is.
+  quint64 fee;
+  if (m_ui->m_manualFeeCheckBox->isChecked()) {
+    fee = getFee();
+  } else {
+    quint64 inputs = WalletAdapter::instance().getUnlockedOutputsCount();
+    if (inputs == 0) {
+      inputs = 1;
+    }
+    const quint64 estimatedSize = inputs * 5400ULL + 2000ULL; // inputs + one output + overhead
+    fee = (estimatedSize + 3999ULL) / 4000ULL + 2ULL;         // ceil(size/4KB) + PqSender's +1 + safety
+  }
+
+  quint64 amount = actualBalance > fee ? actualBalance - fee : 0;
   m_transfers[0]->setAmount(amount);
 }
 
