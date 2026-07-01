@@ -94,56 +94,19 @@
          </size>
         </property>
         <property name="text">
-         <string>Priority:</string>
+         <string>Fee:</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
-       <layout class="QGridLayout" name="m_priorityGridLayout">
-        <property name="verticalSpacing">
-         <number>0</number>
+       <widget class="QLabel" name="m_feeEstimateLabel">
+        <property name="toolTip">
+         <string>Estimated network fee. Discrete's fee is based on transaction size; the exact amount is set when the transaction is created.</string>
         </property>
-        <item row="1" column="0">
-         <widget class="QSlider" name="m_prioritySlider">
-          <property name="maximumSize">
-           <size>
-            <width>200</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="baseSize">
-           <size>
-            <width>200</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>4</number>
-          </property>
-          <property name="pageStep">
-           <number>1</number>
-          </property>
-          <property name="value">
-           <number>2</number>
-          </property>
-          <property name="sliderPosition">
-           <number>2</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="tickPosition">
-           <enum>QSlider::TicksBelow</enum>
-          </property>
-          <property name="tickInterval">
-           <number>1</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
+        <property name="text">
+         <string notr="true">≈ 0.00 XDS</string>
+        </property>
+       </widget>
       </item>
       <item row="0" column="3">
        <spacer name="horizontalSpacer">
@@ -366,7 +329,6 @@
  </widget>
  <tabstops>
   <tabstop>m_transfersScrollarea</tabstop>
-  <tabstop>m_prioritySlider</tabstop>
   <tabstop>m_manualFeeCheckBox</tabstop>
   <tabstop>m_feeSpin</tabstop>
   <tabstop>m_sendAllButton</tabstop>
@@ -434,22 +396,6 @@
     <hint type="sourcelabel">
      <x>335</x>
      <y>566</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>432</x>
-     <y>294</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>m_prioritySlider</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>SendFrame</receiver>
-   <slot>priorityValueChanged(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>188</x>
-     <y>486</y>
     </hint>
     <hint type="destinationlabel">
      <x>432</x>
@@ -527,7 +473,6 @@
   <slot>sendAllClicked()</slot>
   <slot>clearAllClicked()</slot>
   <slot>addRecipientClicked()</slot>
-  <slot>priorityValueChanged(int)</slot>
   <slot>feeValueChanged(double)</slot>
   <slot>advancedClicked(bool)</slot>
   <slot>feeOverrideToggled(bool)</slot>

@@ -46,11 +46,11 @@ private:
   void walletSynchronizationInProgress(quint64 _current, quint64 _total);
   double getMinimalFee();
   quint64 getFee();
+  void updateFeeEstimate();
   void reset();
 
   Q_SLOT void addRecipientClicked();
   Q_SLOT void clearAllClicked();
-  Q_SLOT void priorityValueChanged(int _value);
   Q_SLOT void feeValueChanged(double _value);
   Q_SLOT void amountValueChanged();
   Q_SLOT void sendClicked();

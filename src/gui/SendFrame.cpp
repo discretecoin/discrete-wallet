@@ -37,8 +37,6 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   m_ui->setupUi(this);
   m_glassFrame->setObjectName("m_sendGlassFrame");
   clearAllClicked();
-  m_ui->m_prioritySlider->setValue(2);
-  priorityValueChanged(m_ui->m_prioritySlider->value());
   amountValueChanged();
 
   connect(&WalletAdapter::instance(), &WalletAdapter::walletSendTransactionCompletedSignal, this, &SendFrame::sendTransactionCompleted,
@@ -55,25 +53,7 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   m_ui->m_remote_label->hide();
   //m_ui->m_sendButton->setEnabled(false);
   m_ui->m_feeSpin->setMinimum(getMinimalFee());
-
-  QLabel *label1 = new QLabel(tr("Low"), this);
-  QLabel *label2 = new QLabel(tr("Normal"), this);
-  QLabel *label3 = new QLabel(tr("High"), this);
-  QLabel *label4 = new QLabel(tr("Highest"), this);
-  label1->setStyleSheet(".QLabel { margin: 0; padding: 0;}");
-  label2->setStyleSheet(".QLabel { margin: 0; padding: 0;}");
-  label3->setStyleSheet(".QLabel { margin: 0; padding: 0;}");
-  label4->setStyleSheet(".QLabel { margin: 0; padding: 0;}");
-  m_ui->m_priorityGridLayout->addWidget(m_ui->m_prioritySlider, 0, 0, 1, 4);
-  m_ui->m_priorityGridLayout->addWidget(label1, 1, 0, 1, 1, Qt::AlignHCenter);
-  m_ui->m_priorityGridLayout->addWidget(label2, 1, 1, 1, 1, Qt::AlignHCenter);
-  m_ui->m_priorityGridLayout->addWidget(label3, 1, 2, 1, 1, Qt::AlignHCenter);
-  m_ui->m_priorityGridLayout->addWidget(label4, 1, 3, 1, 1, Qt::AlignHCenter);
-  // Don't set a stylesheet on the slider: under Qlementine any per-widget
-  // stylesheet disables the style's custom handle rendering, leaving a dark
-  // default handle that's invisible on the dark background. Use layout
-  // margins for the inset instead so the themed (mint) handle is kept.
-  m_ui->m_priorityGridLayout->setContentsMargins(10, 0, 10, 0);
+  updateFeeEstimate();
 
   QString connection = Settings::instance().getConnection();
   if(connection.compare("remote") == 0) {
@@ -152,8 +132,6 @@ void SendFrame::clearAllClicked() {
   m_transfers.clear();
   addRecipientClicked();
   amountValueChanged();
-  m_ui->m_prioritySlider->setValue(2);
-  priorityValueChanged(m_ui->m_prioritySlider->value());
 }
 
 void SendFrame::reset() {
@@ -167,6 +145,30 @@ void SendFrame::amountValueChanged() {
     quint64 amount = CurrencyAdapter::instance().parseAmount(transfer->getAmountString());
     m_totalAmount += amount;
   }
+  updateFeeEstimate();
+}
+
+// Discrete's fee is size-based (~1 atomic unit per 4 KB, see sendClicked), so
+// the exact fee is only known once the wallet selects inputs and builds the tx.
+// Show an approximate estimate from the recipient count; a manual override, if
+// set, is shown verbatim.
+void SendFrame::updateFeeEstimate() {
+  quint64 feeAtomic;
+  bool manual = m_ui->m_manualFeeCheckBox->isChecked();
+  if (manual) {
+    feeAtomic = CurrencyAdapter::instance().parseAmount(m_ui->m_feeSpin->cleanText());
+  } else {
+    // outputs = recipients + 1 change; assume ~2 inputs (typical). Each PQ
+    // input ~5.4 KB, each output ~1.2 KB, ~0.6 KB overhead; floor ~1 atomic/4 KB.
+    const quint64 outputs = static_cast<quint64>(m_transfers.size()) + 1;
+    const quint64 inputs = 2;
+    const quint64 size = inputs * 5400ULL + outputs * 1200ULL + 600ULL;
+    feeAtomic = (size + 3999ULL) / 4000ULL + 1ULL;
+  }
+  const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
+  const QString text = (manual ? QString() : QStringLiteral("≈ ")) +
+    CurrencyAdapter::instance().formatAmount(feeAtomic) + " " + ticker;
+  m_ui->m_feeEstimateLabel->setText(text);
 }
 
 void SendFrame::openUriClicked() {
@@ -309,19 +311,14 @@ void SendFrame::sendClicked() {
   }
 }
 
-void SendFrame::priorityValueChanged(int _value) {
-  double send_fee = getMinimalFee() * _value;
-  if (!m_ui->m_manualFeeCheckBox->isChecked()) {
-    m_ui->m_feeSpin->setValue(send_fee);
-  }
-}
-
 void SendFrame::feeValueChanged(double _value) {
   Q_UNUSED(_value);
+  updateFeeEstimate();
 }
 
 void SendFrame::feeOverrideToggled(bool _override) {
   Q_UNUSED(_override);
+  updateFeeEstimate();
 }
 
 quint64 SendFrame::getFee() {
