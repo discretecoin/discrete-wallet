@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
@@ -46,6 +46,12 @@
    </property>
    <item>
     <widget class="QFrame" name="m_accountNumberPanel">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>142</height>
+      </size>
+     </property>
      <property name="frameShape">
       <enum>QFrame::Shape::StyledPanel</enum>
      </property>
@@ -229,6 +235,12 @@
    </item>
    <item>
     <widget class="QFrame" name="m_accountBalances">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>92</height>
+      </size>
+     </property>
      <property name="frameShape">
       <enum>QFrame::Shape::StyledPanel</enum>
      </property>
@@ -253,6 +265,12 @@
       </property>
       <item>
        <widget class="QLabel" name="m_actualBalanceLabel">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>44</height>
+         </size>
+        </property>
         <property name="toolTip">
          <string>Spendable balance</string>
         </property>
