@@ -37,6 +37,20 @@ public:
     static const QColor fg(220, 220, 220);
     return fg;
   }
+
+  // Qlementine's theme palette sets ToolTipText to secondaryColorForeground
+  // (near-black), assuming a light ToolTipBase — but PE_PanelTipLabel paints
+  // the tooltip background dark via toolTipBackgroundColor(), giving dark text
+  // on a dark background. The base polish() overwrites the palette with the
+  // theme palette, so correct the tooltip roles here, after it runs, to keep
+  // tooltip text readable. (Doing this via an app-wide QToolTip stylesheet
+  // instead forces a global re-polish that recurses through Qlementine's
+  // combobox filter and overflows the stack on launch.)
+  void polish(QPalette& palette) override {
+    QlementineStyle::polish(palette);
+    palette.setColor(QPalette::ToolTipBase, QColor(35, 38, 41));
+    palette.setColor(QPalette::ToolTipText, QColor(0xF5, 0xF7, 0xF8));
+  }
 };
 #endif
 
