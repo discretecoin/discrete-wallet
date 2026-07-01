@@ -366,6 +366,10 @@ void MainWindow::buildSidebar() {
   nav->setContentsMargins(0, 4, 0, 0);
   nav->setSpacing(2);
   for (QAction* action : navActions) {
+    // QToolButton has no icon-text gap property, so pad the label with leading
+    // spaces. iconText is what the button shows; menus/tray use text(), so they
+    // are unaffected.
+    action->setIconText(QStringLiteral("   ") + action->text());
     QToolButton* button = new QToolButton(m_sidebar);
     button->setDefaultAction(action);
     button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
