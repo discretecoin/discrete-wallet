@@ -19,7 +19,6 @@
 #include "NodeAdapter.h"
 #include "CurrencyAdapter.h"
 #include "Settings.h"
-#include "QRCodeDialog.h"
 #include "AccountNumber.h"
 
 #include "ui_accountframe.h"
@@ -29,13 +28,14 @@ namespace WalletGui {
 namespace {
 
 constexpr int CAPTION_FONT_SIZE = 10;
-constexpr int ADDRESS_FONT_SIZE = 16;
-constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 26;
+constexpr int ADDRESS_FONT_SIZE = 13;
+constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
 // PQ addresses are ~3000-character bech32m strings — far too long to display
-// in full inline. Elide to a short prefix/suffix, like other crypto wallets;
-// the full address is always available via tooltip and the copy button.
-constexpr int ADDRESS_ELIDE_PREFIX = 20;
-constexpr int ADDRESS_ELIDE_SUFFIX = 12;
+// in full. Elide to a short prefix/suffix, like other crypto wallets; the full
+// address is always available via the copy button and context menu. The
+// sidebar is narrow, so keep the elision short.
+constexpr int ADDRESS_ELIDE_PREFIX = 13;
+constexpr int ADDRESS_ELIDE_SUFFIX = 6;
 
 QString getCopyableAddressText() {
   return WalletAdapter::instance().getAddress();
@@ -45,30 +45,33 @@ QString formatDisplayAddress(const QString& address) {
   if (address.isEmpty()) {
     return QString();
   }
-
-  QString elided = address;
   if (address.size() > ADDRESS_ELIDE_PREFIX + ADDRESS_ELIDE_SUFFIX + 1) {
-    elided = address.left(ADDRESS_ELIDE_PREFIX) + QStringLiteral("…") + address.right(ADDRESS_ELIDE_SUFFIX);
+    return address.left(ADDRESS_ELIDE_PREFIX) + QStringLiteral("…") + address.right(ADDRESS_ELIDE_SUFFIX);
   }
-
-  return QString("<div style=\"line-height:1.22;\"><span>%1</span></div>").arg(elided.toHtmlEscaped());
+  return address;
 }
 
-QString formatBalanceLabel(const QString& title, const QStringList& amountParts, const QString& ticker, int majorSize, int minorSize) {
+// Primary balance (Available): a small muted caption above a large value.
+QString formatPrimaryBalance(const QString& title, const QString& amount, const QString& ticker) {
   return QString(
-    "<div style=\"line-height:1.0;\">"
-      "<span style=\"font-size:%1px;\">%2</span>"
-      "<span style=\"font-size:%1px;\">: </span>"
-      "<span style=\"font-size:%3px; font-weight:600;\">%4</span>"
-      "<span style=\"font-size:%5px;\"> %6 %7</span>"
+    "<div style=\"line-height:1.15;\">"
+      "<span style=\"font-size:%1px; color:#7f8b94; letter-spacing:1px;\">%2</span><br>"
+      "<span style=\"font-size:22px; font-weight:600;\">%3</span>"
+      "<span style=\"font-size:12px; color:#7f8b94;\"> %4</span>"
     "</div>")
     .arg(CAPTION_FONT_SIZE)
-    .arg(title.toHtmlEscaped())
-    .arg(majorSize)
-    .arg(amountParts.first().toHtmlEscaped())
-    .arg(minorSize)
-    .arg(amountParts.last().toHtmlEscaped())
+    .arg(title.toUpper().toHtmlEscaped())
+    .arg(amount.toHtmlEscaped())
     .arg(ticker.toHtmlEscaped());
+}
+
+// Secondary balance (Pending / Total): muted caption + inline value.
+QString formatSecondaryBalance(const QString& title, const QString& amount) {
+  return QString(
+    "<span style=\"font-size:12px; color:#8a95a0;\">%1 </span>"
+    "<span style=\"font-size:12px;\">%2</span>")
+    .arg(title.toHtmlEscaped())
+    .arg(amount.toHtmlEscaped());
 }
 
 }
@@ -113,15 +116,14 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 
   QFont addressFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   addressFont.setPixelSize(ADDRESS_FONT_SIZE);
-  addressFont.setWeight(QFont::Bold);
 
   QFont accountNumberFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   accountNumberFont.setPixelSize(ACCOUNT_NUMBER_VALUE_FONT_SIZE);
   accountNumberFont.setBold(true);
 
   m_ui->m_addressLabel->setFont(addressFont);
-  m_ui->m_addressLabel->setWordWrap(true);
-  m_ui->m_addressLabel->setTextFormat(Qt::RichText);
+  m_ui->m_addressLabel->setWordWrap(false);
+  m_ui->m_addressLabel->setTextFormat(Qt::PlainText);
   m_ui->m_addressLabel->installEventFilter(this);
   m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
@@ -136,16 +138,12 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
   m_ui->m_copyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  m_ui->m_qrButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyAccountNumberButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  m_ui->m_copyButton->setIconSize(QSize(16, 16));
-  m_ui->m_qrButton->setIconSize(QSize(16, 16));
-  m_ui->m_copyAccountNumberButton->setIconSize(QSize(16, 16));
+  m_ui->m_copyButton->setIconSize(QSize(15, 15));
+  m_ui->m_copyAccountNumberButton->setIconSize(QSize(15, 15));
   m_ui->m_copyButton->setText(QString());
-  m_ui->m_qrButton->setText(QString());
   m_ui->m_copyAccountNumberButton->setText(QString());
   m_ui->m_copyButton->setFocusPolicy(Qt::NoFocus);
-  m_ui->m_qrButton->setFocusPolicy(Qt::NoFocus);
   m_ui->m_copyAccountNumberButton->setFocusPolicy(Qt::NoFocus);
 }
 
@@ -160,27 +158,20 @@ void AccountFrame::changeEvent(QEvent* _event) {
 }
 
 void AccountFrame::applyFramePalette() {
-  const QColor borderColor = palette().color(QPalette::Mid);
+  // The two cards. Object-name-scoped so the fill/border don't cascade to the
+  // labels nested inside them.
+  const QString cardCss =
+    QStringLiteral("QFrame#%1 { background-color: #182029; border: 1px solid #2A343D; border-radius: 12px; }");
+  m_ui->m_accountNumberPanel->setStyleSheet(cardCss.arg(QStringLiteral("m_accountNumberPanel")));
+  m_ui->m_accountBalances->setStyleSheet(cardCss.arg(QStringLiteral("m_accountBalances")));
 
-  // Account number panel — border only
-  m_ui->m_accountNumberPanel->setStyleSheet(
-    QString("QFrame#m_accountNumberPanel { border: 2px solid %1; border-radius: 8px; }")
-    .arg(borderColor.name()));
-
-  // All of AccountFrame's own labels live in a QToolBar (reparented there via
-  // QToolBar::addWidget in MainWindow), which some styles resolve against a
-  // different effective palette than the rest of the window — they otherwise
-  // render with dark/low-contrast text. Force the correct color explicitly,
-  // the same fix already applied to the view-switcher toolbar's buttons (see
-  // MainWindow::applyToolBarPalette).
-  const QString textColorCss = QString("color: %1;").arg(palette().color(QPalette::WindowText).name());
-  m_ui->label->setStyleSheet(textColorCss);
-  m_ui->m_accountNumberTitleLabel->setStyleSheet(textColorCss);
-  m_ui->m_addressLabel->setStyleSheet(textColorCss);
-  m_ui->m_accountNumberLabel->setStyleSheet(textColorCss);
-  m_ui->m_actualBalanceLabel->setStyleSheet(textColorCss);
-  m_ui->m_pendingBalanceLabel->setStyleSheet(textColorCss);
-  m_ui->m_totalBalanceLabel->setStyleSheet(textColorCss);
+  // These labels sit in cards whose stylesheet fill can otherwise leave the
+  // text resolving against a low-contrast palette; set colors explicitly.
+  // Account number is the hero — brand mint; captions muted; address muted.
+  m_ui->m_accountNumberTitleLabel->setStyleSheet(QStringLiteral("color:#7f8b94; font-size:10px; letter-spacing:1px;"));
+  m_ui->label->setStyleSheet(QStringLiteral("color:#7f8b94; font-size:11px;"));
+  m_ui->m_accountNumberLabel->setStyleSheet(QStringLiteral("color:#5FE29F;"));
+  m_ui->m_addressLabel->setStyleSheet(QStringLiteral("color:#9AA7B2;"));
 }
 
 bool AccountFrame::eventFilter(QObject* _object, QEvent* _event) {
@@ -222,42 +213,19 @@ void AccountFrame::copyAddress() {
   QApplication::clipboard()->setText(WalletAdapter::instance().getAddress());
 }
 
-void AccountFrame::showQR() {
-  // The full bech32m address is ~5000 characters (it carries both a 1184-byte
-  // ML-KEM-768 key and a 1952-byte ML-DSA-65 key) — well beyond what any QR
-  // code, even at the largest version and lowest error correction, can hold.
-  // Encode the short account number instead; that's exactly what it's for.
-  if (!m_accountNumber.isEmpty()) {
-    QRCodeDialog dlg(tr("QR Code"), m_accountNumber, this);
-    dlg.exec();
-    return;
-  }
-
-  QMessageBox::information(this, tr("QR Code"),
-    tr("Your full address is too long to encode as a QR code. Register an account "
-       "number (see the panel on the right) to get a short, scannable identifier."));
-}
-
 void AccountFrame::updateActualBalance(quint64 _balance) {
-  QStringList actualList = divideAmount(_balance);
   const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
-  m_ui->m_actualBalanceLabel->setText(formatBalanceLabel(tr("Available"), actualList, ticker, 18, 10));
+  m_ui->m_actualBalanceLabel->setText(formatPrimaryBalance(tr("Available"), divideAmount(_balance).first(), ticker));
 
   quint64 pendingBalance = WalletAdapter::instance().getPendingBalance();
-
-  QStringList pendingList = divideAmount(_balance + pendingBalance);
-  m_ui->m_totalBalanceLabel->setText(formatBalanceLabel(tr("Total"), pendingList, ticker, 20, 10));
+  m_ui->m_totalBalanceLabel->setText(formatSecondaryBalance(tr("Total"), divideAmount(_balance + pendingBalance).first()));
 }
 
 void AccountFrame::updatePendingBalance(quint64 _balance) {
-  QStringList pendingList = divideAmount(_balance);
-  const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
-  m_ui->m_pendingBalanceLabel->setText(formatBalanceLabel(tr("Pending"), pendingList, ticker, 18, 10));
+  m_ui->m_pendingBalanceLabel->setText(formatSecondaryBalance(tr("Pending"), divideAmount(_balance).first()));
 
   quint64 actualBalance = WalletAdapter::instance().getActualBalance();
-
-  QStringList totalList = divideAmount(_balance + actualBalance);
-  m_ui->m_totalBalanceLabel->setText(formatBalanceLabel(tr("Total"), totalList, ticker, 20, 10));
+  m_ui->m_totalBalanceLabel->setText(formatSecondaryBalance(tr("Total"), divideAmount(_balance + actualBalance).first()));
 }
 
 void AccountFrame::fetchAccountNumber(const QString& _address) {

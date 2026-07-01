@@ -126,33 +126,36 @@ void TransferFrame::resolveAccountNumber(const QString& _input) {
   uint32_t subaddrIndex = 0;
   bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(_input.toStdString(), acct, subaddrIndex);
   if (!isHitc && !CryptoNote::AccountNumber::fromString(_input.toStdString(), acct)) {
+    m_ui->m_addressStatusLabel->setStyleSheet(QStringLiteral("color:#D96A73;"));
     m_ui->m_addressStatusLabel->setText(tr("Invalid account number"));
     m_ui->m_addressStatusLabel->show();
     return;
   }
 
+  // Just confirm the account number resolves on chain; don't rewrite the field.
+  // The full recipient keys are ~5000 characters — expanding them into the
+  // input is unreadable, and unnecessary: the send path resolves the account
+  // number again to the real keys (see WalletLegacy::sendTransaction /
+  // PqRecipient), and validateAddress() accepts account numbers directly. So
+  // the H-I-C / H-I-T-C string stays in the field and is sent as-is.
   auto found = std::make_shared<bool>(false);
   auto viewPubHex = std::make_shared<std::string>();
   auto spendPubHex = std::make_shared<std::string>();
 
   NodeAdapter::instance().resolvePqAccount(acct.blockHeight, acct.txIndex, *found, *viewPubHex, *spendPubHex,
-    [this, _input, found, viewPubHex, spendPubHex](std::error_code ec) {
-      QMetaObject::invokeMethod(this, [this, _input, ec, found, viewPubHex, spendPubHex]() {
-        if (!ec && *found) {
-          CryptoPQ::KemPublicKey viewPub;
-          CryptoPQ::DsaPublicKey spendPub;
-          size_t sz = 0;
-          if (Common::fromHex(*viewPubHex, viewPub.data(), viewPub.size(), sz) && sz == viewPub.size() &&
-              Common::fromHex(*spendPubHex, spendPub.data(), spendPub.size(), sz) && sz == spendPub.size()) {
-            CryptoNote::PqAddress addr = CryptoNote::makePqAddress(CurrencyAdapter::instance().getNetworkPrefix(), viewPub, spendPub);
-            const std::string hrp = CryptoNote::pqBech32Hrp(CurrencyAdapter::instance().isTestnet());
-            const QString resolvedAddress = QString::fromStdString(CryptoNote::encodePqAddress(addr, hrp));
-            m_ui->m_addressEdit->setText(QString("%1 <%2>").arg(_input).arg(resolvedAddress));
-            m_ui->m_addressStatusLabel->hide();
-            return;
-          }
+    [this, _input, found](std::error_code ec) {
+      QMetaObject::invokeMethod(this, [this, _input, ec, found]() {
+        // A newer edit may have changed the field since this lookup started.
+        if (m_ui->m_addressEdit->text().trimmed() != _input) {
+          return;
         }
-        m_ui->m_addressStatusLabel->setText(tr("Account number not found"));
+        if (!ec && *found) {
+          m_ui->m_addressStatusLabel->setStyleSheet(QStringLiteral("color:#5FE29F;"));
+          m_ui->m_addressStatusLabel->setText(tr("Account number found"));
+        } else {
+          m_ui->m_addressStatusLabel->setStyleSheet(QStringLiteral("color:#D96A73;"));
+          m_ui->m_addressStatusLabel->setText(tr("Account number not found"));
+        }
         m_ui->m_addressStatusLabel->show();
       }, Qt::QueuedConnection);
     });

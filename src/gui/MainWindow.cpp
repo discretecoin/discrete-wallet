@@ -19,6 +19,8 @@
 #include <QToolButton>
 #include <QPushButton>
 #include <QFontDatabase>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
 #include "MainWindow.h"
 
@@ -138,27 +140,7 @@ void MainWindow::initUi() {
   createTrayIcon();
 #endif
 
-  m_ui->accountToolBar->setAllowedAreas(Qt::TopToolBarArea);
-  m_ui->accountToolBar->setContentsMargins(0, 0, 0, 0);
-  m_ui->accountToolBar->layout()->setContentsMargins(0, 0, 0, 0);
-
-  accountWidget = m_ui->accountToolBar->addWidget(m_ui->m_accountFrame);
-  addToolBar(Qt::TopToolBarArea, m_ui->accountToolBar);
-  addToolBarBreak();
-  addToolBar(Qt::TopToolBarArea, m_ui->toolBar);
-  addToolBarBreak();
-  m_ui->accountToolBar->setMovable(false);
-  m_ui->toolBar->setMovable(false);
-
-  applyToolBarPalette();
-
   m_ui->m_aboutCryptonoteAction->setText(QString(tr("About %1 Wallet")).arg(CurrencyAdapter::instance().getCurrencyDisplayName()));
-  m_ui->m_sendFrame->hide();
-  accountWidget->setVisible(false);
-  m_ui->m_receiveFrame->hide();
-  m_ui->m_transactionsFrame->hide();
-  m_ui->m_addressBookFrame->hide();
-  m_ui->m_miningFrame->hide();
 
   m_tabActionGroup->addAction(m_ui->m_transactionsAction);
   m_tabActionGroup->addAction(m_ui->m_sendAction);
@@ -166,12 +148,16 @@ void MainWindow::initUi() {
   m_tabActionGroup->addAction(m_ui->m_addressBookAction);
   m_tabActionGroup->addAction(m_ui->m_miningAction);
 
-  // Add spacing between icon and text in toolbar buttons
-  for (auto* action : m_ui->toolBar->actions()) {
-      if (!action->icon().isNull() && !action->iconText().isEmpty()) {
-           action->setIconText(QStringLiteral("  ") + action->iconText());
-      }
-  }
+  // Assemble the left sidebar (account card + vertical nav + status footer)
+  // and the content area, replacing the former top toolbars.
+  buildSidebar();
+
+  m_ui->m_sendFrame->hide();
+  m_ui->m_accountFrame->setVisible(false);
+  m_ui->m_receiveFrame->hide();
+  m_ui->m_transactionsFrame->hide();
+  m_ui->m_addressBookFrame->hide();
+  m_ui->m_miningFrame->hide();
 
   m_syncProgressBar->setMaximum(maxProgressBar);
   m_syncProgressBar->setMinimum(0);
@@ -183,17 +169,9 @@ void MainWindow::initUi() {
 
   m_syncStatusLabel->hide();
 
-  statusBar()->setMinimumHeight(28);
-  statusBar()->setContentsMargins(4, 0, 4, 0);
-  statusBar()->setSizeGripEnabled(false);
-  statusBar()->setStyleSheet("QStatusBar::item { border: none; }");
-  statusBar()->addPermanentWidget(m_syncStatusLabel, 1);
-  statusBar()->addPermanentWidget(m_syncProgressBar);
-  statusBar()->addPermanentWidget(m_trackingModeIconLabel);
-  statusBar()->addPermanentWidget(m_remoteModeIconLabel);
-  statusBar()->addPermanentWidget(m_connectionStateIconLabel);
-  statusBar()->addPermanentWidget(m_encryptionStateIconLabel);
-  statusBar()->addPermanentWidget(m_synchronizationStateIconLabel);
+  // Status indicators now live in the sidebar footer (see buildSidebar); the
+  // QMainWindow status bar is unused.
+  statusBar()->hide();
 
   m_synchronizationStateIconLabel->setFixedSize(20, 20);
   m_synchronizationStateIconLabel->setScaledContents( true );
@@ -343,11 +321,6 @@ void MainWindow::changeEvent(QEvent* _event) {
     break;
 #endif
   }
-  case QEvent::PaletteChange:
-  case QEvent::StyleChange:
-    if (!m_isAboutToQuit)
-      applyToolBarPalette();
-    break;
   default:
     break;
   }
@@ -355,29 +328,89 @@ void MainWindow::changeEvent(QEvent* _event) {
   QMainWindow::changeEvent(_event);
 }
 
-void MainWindow::applyToolBarPalette() {
-  const QColor windowColor = palette().color(QPalette::Window);
-  const QColor darkerColor = windowColor.darker(135);
-  const QColor lighterColor = windowColor.lighter(125);
-  const QColor accentColor = palette().color(QPalette::Highlight);
-  const QColor textColor = palette().color(QPalette::WindowText);
+void MainWindow::buildSidebar() {
+  QWidget* central = m_ui->centralwidget;
 
-  m_ui->toolBar->setContentsMargins(0, 0, 0, 0);
-  m_ui->toolBar->layout()->setContentsMargins(0, 0, 0, 0);
-  m_ui->toolBar->layout()->setSpacing(0);
-  // Once a stylesheet touches a QToolButton at all, be explicit about text
-  // color too — otherwise it can resolve against a stale/default palette
-  // instead of the current theme and render unreadably dim.
-  m_ui->toolBar->setStyleSheet(
-    QString(
-      "QToolBar#toolBar { background-color: %1; border: none; spacing: 0px; padding: 0px; }"
-      "QToolBar#toolBar QToolButton { background-color: %1; color: %5; border: none; border-radius: 0px;"
-      "  padding: 6px 14px; margin: 0px; min-height: 36px; }"
-      "QToolBar#toolBar QToolButton:hover { background-color: %4; color: %5; }"
-      "QToolBar#toolBar QToolButton:checked { background-color: %2; color: %5;"
-      "  border-top: 2px solid %3; }"
-    )
-    .arg(darkerColor.name(), windowColor.name(), accentColor.name(), lighterColor.name(), textColor.name()));
+  // Content area: every view frame stacked in one column. Exactly one is ever
+  // visible at a time (driven by the tab actions / wallet state), so the
+  // visible one fills the area and the hidden ones take no space.
+  QWidget* content = new QWidget(central);
+  content->setObjectName(QStringLiteral("m_content"));
+  QVBoxLayout* contentLayout = new QVBoxLayout(content);
+  contentLayout->setContentsMargins(0, 0, 0, 0);
+  contentLayout->setSpacing(0);
+  contentLayout->addWidget(m_ui->m_transactionsFrame);
+  contentLayout->addWidget(m_ui->m_sendFrame);
+  contentLayout->addWidget(m_ui->m_receiveFrame);
+  contentLayout->addWidget(m_ui->m_addressBookFrame);
+  contentLayout->addWidget(m_ui->m_miningFrame);
+  contentLayout->addWidget(m_ui->m_noWalletFrame);
+
+  // Sidebar column.
+  m_sidebar = new QWidget(central);
+  m_sidebar->setObjectName(QStringLiteral("m_sidebar"));
+  m_sidebar->setFixedWidth(250);
+  QVBoxLayout* side = new QVBoxLayout(m_sidebar);
+  side->setContentsMargins(12, 12, 12, 12);
+  side->setSpacing(10);
+
+  side->addWidget(m_ui->m_accountFrame);
+
+  // Vertical nav — QToolButtons bound to the existing (exclusive) tab actions,
+  // so they inherit the check state and toggled->setVisible wiring already
+  // connected in the .ui.
+  QAction* navActions[] = { m_ui->m_transactionsAction, m_ui->m_sendAction,
+                            m_ui->m_receiveAction, m_ui->m_addressBookAction,
+                            m_ui->m_miningAction };
+  QVBoxLayout* nav = new QVBoxLayout();
+  nav->setContentsMargins(0, 4, 0, 0);
+  nav->setSpacing(2);
+  for (QAction* action : navActions) {
+    QToolButton* button = new QToolButton(m_sidebar);
+    button->setDefaultAction(action);
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    button->setIconSize(QSize(20, 20));
+    button->setCursor(Qt::PointingHandCursor);
+    nav->addWidget(button);
+    m_navButtons.append(button);
+  }
+  side->addLayout(nav);
+
+  side->addStretch(1);
+
+  // Status footer.
+  QVBoxLayout* footer = new QVBoxLayout();
+  footer->setContentsMargins(2, 8, 2, 0);
+  footer->setSpacing(6);
+  footer->addWidget(m_syncStatusLabel);
+  footer->addWidget(m_syncProgressBar);
+  QHBoxLayout* icons = new QHBoxLayout();
+  icons->setSpacing(8);
+  icons->addWidget(m_synchronizationStateIconLabel);
+  icons->addWidget(m_connectionStateIconLabel);
+  icons->addWidget(m_encryptionStateIconLabel);
+  icons->addWidget(m_trackingModeIconLabel);
+  icons->addWidget(m_remoteModeIconLabel);
+  icons->addStretch(1);
+  footer->addLayout(icons);
+  side->addLayout(footer);
+
+  // Replace the central widget's old grid with [ sidebar | content ]. The
+  // account + view frames were reparented out above, so the grid is now empty.
+  delete central->layout();
+  QHBoxLayout* root = new QHBoxLayout(central);
+  root->setContentsMargins(0, 0, 0, 0);
+  root->setSpacing(0);
+  root->addWidget(m_sidebar);
+  root->addWidget(content, 1);
+
+  m_sidebar->setStyleSheet(
+    "#m_sidebar { background-color:#10171B; border-right:1px solid #1c262c; }"
+    "#m_sidebar QToolButton { color:#c3cbd1; border:none; border-radius:8px;"
+    "  padding:9px 12px; text-align:left; background:transparent; font-size:14px; }"
+    "#m_sidebar QToolButton:hover { background:#17212a; }"
+    "#m_sidebar QToolButton:checked { color:#5FE29F; background:#17251f; }");
 }
 
 bool MainWindow::event(QEvent* _event) {
@@ -875,13 +908,11 @@ void MainWindow::about() {
 }
 
 void MainWindow::setStatusBarText(const QString& _text) {
+  // The QMainWindow status bar is hidden; wallet-state text goes to the
+  // sidebar footer label instead.
   m_statusBarText = _text;
-  if (m_syncProgressBar->isHidden()) {
-    statusBar()->showMessage(m_statusBarText);
-  } else {
-    m_syncStatusLabel->setText(QString("  ") + m_statusBarText);
-    statusBar()->clearMessage();
-  }
+  m_syncStatusLabel->setText(m_statusBarText);
+  m_syncStatusLabel->setVisible(!m_statusBarText.isEmpty());
 }
 
 void MainWindow::showMessage(const QString& _text, QtMsgType _type) {
@@ -909,7 +940,7 @@ void MainWindow::lockWalletWithPassword() {
   bool hide = Settings::instance().hideEverythingOnLocked();
 
   if (hide) {
-    accountWidget->setVisible(false);
+    m_ui->m_accountFrame->setVisible(false);
     m_ui->m_receiveFrame->hide();
     m_ui->m_sendFrame->hide();
     m_ui->m_transactionsFrame->hide();
@@ -931,7 +962,7 @@ void MainWindow::lockWalletWithPassword() {
   } while (keep_asking);
 
   if (hide) {
-    accountWidget->setVisible(true);
+    m_ui->m_accountFrame->setVisible(true);
     m_ui->m_transactionsAction->trigger();
   }
 }
@@ -1007,7 +1038,6 @@ void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
 void MainWindow::walletOpened(bool _error, const QString& _error_text) {
   if (!_error) {
     m_ui->m_noWalletFrame->hide();
-    m_ui->accountToolBar->show();
     m_ui->m_closeWalletAction->setEnabled(true);
     m_ui->m_exportTrackingKeyAction->setEnabled(true);
     m_encryptionStateIconLabel->show();
@@ -1031,7 +1061,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     setWindowTitle(QString(tr("%1 - Discrete Wallet %2")).arg(Settings::instance().getWalletFile()).arg(Settings::instance().getVersion()));
 
     m_ui->m_transactionsAction->trigger();
-    accountWidget->setVisible(true);
+    m_ui->m_accountFrame->setVisible(true);
     m_ui->m_transactionsFrame->show();
 
     checkTrackingMode();
@@ -1061,7 +1091,7 @@ void MainWindow::walletClosed() {
   m_ui->m_signMessageAction->setEnabled(false);
   m_ui->m_verifySignedMessageAction->setEnabled(false);
   m_ui->m_lockWalletAction->setEnabled(false);
-  accountWidget->setVisible(false);
+  m_ui->m_accountFrame->setVisible(false);
   m_ui->m_receiveFrame->hide();
   m_ui->m_sendFrame->hide();
   m_ui->m_transactionsFrame->hide();

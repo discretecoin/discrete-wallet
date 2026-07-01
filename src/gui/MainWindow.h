@@ -19,6 +19,7 @@
 #include "PaymentServer.h"
 
 class QActionGroup;
+class QToolButton;
 
 namespace Ui {
 class MainWindow;
@@ -62,7 +63,8 @@ private:
   QLabel* m_remoteModeIconLabel;
   QSystemTrayIcon* m_trayIcon;
   QActionGroup* m_tabActionGroup;
-  QAction* accountWidget;
+  QWidget* m_sidebar;
+  QList<QToolButton*> m_navButtons;
   QAction* toggleHideAction;
   bool m_isAboutToQuit;
   QList<QAction*> recentFileActionList;
@@ -85,7 +87,7 @@ private:
 
   void connectToSignals();
   void initUi();
-  void applyToolBarPalette();
+  void buildSidebar();
   void setMainWindowTitle();
   void createTrayIcon();
   void createTrayIconMenu();

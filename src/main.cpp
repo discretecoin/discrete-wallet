@@ -104,6 +104,11 @@ int main(int argc, char* argv[]) {
   // keeps rendering with the pre-theme default palette: dark text on the
   // theme's dark background. Set it explicitly, immediately.
   QApplication::setPalette(style->standardPalette());
+  // Qlementine paints tooltips via the widget palette on Windows (its custom
+  // rounded-tooltip path is macOS-only), which leaves them dark-on-dark. A
+  // global QToolTip stylesheet is the reliable cross-platform override.
+  app.setStyleSheet(app.styleSheet() +
+    QStringLiteral("\nQToolTip { color:#F5F7F8; background-color:#232629; border:1px solid #3A4750; padding:4px 6px; }"));
 #endif
 
   if (PaymentServer::ipcSendCommandLine())
