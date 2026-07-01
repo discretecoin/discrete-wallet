@@ -1,4 +1,5 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -31,7 +32,6 @@ public Q_SLOTS:
   void addClicked();
   void editClicked();
   void copyClicked();
-  void copyPaymentIdClicked();
   void copyLabelClicked();
   void copyAccountNumberClicked();
   void deleteClicked();
@@ -40,7 +40,6 @@ public Q_SLOTS:
 private:
   QScopedPointer<Ui::AddressBookFrame> m_ui;
 
-  static bool isValidPaymentId(const QByteArray& _paymentIdString);
   QMenu* contextMenu;
 
   Q_SLOT void currentAddressChanged(const QModelIndex& _index);

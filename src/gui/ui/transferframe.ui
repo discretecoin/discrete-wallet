@@ -120,10 +120,10 @@
       <string notr="true"/>
      </property>
      <property name="decimals">
-      <number>12</number>
+      <number>2</number>
      </property>
      <property name="maximum">
-      <double>9999999.999998999759555</double>
+      <double>9999999.990000000000000</double>
      </property>
     </widget>
    </item>

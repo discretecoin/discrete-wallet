@@ -25,7 +25,7 @@ void Updater::checkForUpdate()
             this, &Updater::replyFinished);
 
     // Proceed with the update check
-    QNetworkRequest request((QUrl(KARBO_UPDATE_URL)));
+    QNetworkRequest request((QUrl(DISCRETE_UPDATE_URL)));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     manager->get(request);
 }
@@ -68,7 +68,7 @@ void Updater::replyFinished(QNetworkReply *reply)
             if (QMessageBox::warning(nullptr, QObject::tr("New version available"),
                                      message,
                                      QMessageBox::Ok, QMessageBox::Cancel) == QMessageBox::Ok) {
-                QDesktopServices::openUrl(QUrl(KARBO_DOWNLOAD_URL));
+                QDesktopServices::openUrl(QUrl(DISCRETE_DOWNLOAD_URL));
             }
         }
     }

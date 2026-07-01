@@ -23,6 +23,9 @@
 #include <IWalletLegacy.h>
 #include "System/Dispatcher.h"
 #include "Wallet/WalletRpcServer.h"
+#include "Wallet/PqWallet.h"
+#include "crypto_pq/PqKem.h"
+#include "crypto_pq/PqDsa.h"
 
 namespace WalletGui {
 
@@ -37,9 +40,10 @@ public:
 
   void open(const QString& _password);
   void createWallet();
-  void createNonDeterministic();
   void createWithKeys(const CryptoNote::AccountKeys& _keys);
   void createWithKeys(const CryptoNote::AccountKeys& _keys, const quint32 _sync_heigth);
+  void createTrackingWallet(const CryptoNote::AccountKeys& _keys, const CryptoNote::PqTrackingKeys& _trackingKeys);
+  void createTrackingWallet(const CryptoNote::AccountKeys& _keys, const CryptoNote::PqTrackingKeys& _trackingKeys, const quint32 _sync_heigth);
   void close();
   bool save(bool _details, bool _cache);
   void backup(const QString& _file);
@@ -48,16 +52,12 @@ public:
 
   QString getAddress() const;
   quint64 getActualBalance() const;
-  quint64 getUnmixableBalance() const;
   quint64 getPendingBalance() const;
   quint64 getTransactionCount() const;
   quint64 getTransferCount() const;
   bool getTransaction(CryptoNote::TransactionId& _id, CryptoNote::WalletLegacyTransaction& _transaction);
   bool getTransfer(CryptoNote::TransferId& _id, CryptoNote::WalletLegacyTransfer& _transfer);
   bool getAccountKeys(CryptoNote::AccountKeys& _keys);
-  QString getTxProof(Crypto::Hash& _txid, CryptoNote::AccountPublicAddress& _address, Crypto::SecretKey& _tx_key);
-  QString getReserveProof(const quint64 &_reserve, const QString &_message);
-  Crypto::SecretKey getTxKey(Crypto::Hash& txid);
   size_t getUnlockedOutputsCount();
 
   std::vector<CryptoNote::TransactionOutputInformation> getOutputs();
@@ -65,13 +65,21 @@ public:
   std::vector<CryptoNote::TransactionOutputInformation> getUnlockedOutputs();
   std::vector<CryptoNote::TransactionSpentOutputInformation> getSpentOutputs();
 
-  void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee, const QString& _payment_id, quint64 _mixin);
-  void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, const std::list<CryptoNote::TransactionOutputInformation>& _selectedOuts, quint64 _fee, const QString& _payment_id, quint64 _mixin);
+  void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee);
 
+  // Registers this wallet's PQ identity on chain as a short H-I-C account
+  // number (a normal fee-paying transaction carrying the registration tag in
+  // its extra field). See include/AccountNumber.h.
   void registerAccountNumber();
 
-  QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee, const QString& _payment_id, quint64 _mixin);
-  QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, const std::list<CryptoNote::TransactionOutputInformation>& _selectedOuts, quint64 _fee, const QString& _payment_id, quint64 _mixin);
+  // This wallet's own PQ identity, hex-encoded (view pub, spend pub) — used to
+  // look up its account-number registration and to derive mining keys.
+  bool getOwnPqIdentityHex(QString& _viewPubHex, QString& _spendPubHex) const;
+
+  // The PQ identity used to mine: the same derivation the daemon's
+  // start_mining path uses (CryptoNote::deriveMinerPqKeys), so a block mined by
+  // this wallet is signed with the matching spend secret.
+  bool getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const;
 
   bool isOpen() const;
 
@@ -79,7 +87,10 @@ public:
   void setWalletFile(const QString& _path);
 
   QString signMessage(const QString &data);
-  bool verifyMessage(const QString &data, const CryptoNote::AccountPublicAddress &address, const QString &signature);
+  // _destination accepts either a raw bech32m PQ address or an account number
+  // (H-I-C / H-I-T-C); it is resolved to a spend public key the same way the
+  // send path resolves a destination (see PqRecipient.h).
+  bool verifyMessage(const QString &data, const QString &_destination, const QString &signature);
 
   void initCompleted(std::error_code _result) Q_DECL_OVERRIDE;
   void saveCompleted(std::error_code _result) Q_DECL_OVERRIDE;
@@ -87,13 +98,11 @@ public:
   void synchronizationCompleted(std::error_code _error) Q_DECL_OVERRIDE;
   void actualBalanceUpdated(uint64_t _actual_balance) Q_DECL_OVERRIDE;
   void pendingBalanceUpdated(uint64_t _pending_balance) Q_DECL_OVERRIDE;
-  void unmixableBalanceUpdated(uint64_t _dust_balance) Q_DECL_OVERRIDE;
   void externalTransactionCreated(CryptoNote::TransactionId _transaction_id) Q_DECL_OVERRIDE;
   void sendTransactionCompleted(CryptoNote::TransactionId _transaction_id, std::error_code _result) Q_DECL_OVERRIDE;
   void transactionUpdated(CryptoNote::TransactionId _transaction_id) Q_DECL_OVERRIDE;
 
-  bool isDeterministic() const;
-  bool isDeterministic(CryptoNote::AccountKeys& _keys) const;
+  bool isTrackingWallet() const;
   QString getMnemonicSeed(QString _language) const;
   CryptoNote::AccountKeys getKeysFromMnemonicSeed(QString& _seed) const;
   bool tryOpen(const QString& _password);
@@ -124,7 +133,6 @@ private:
   void onWalletInitCompleted(int _error, const QString& _error_text);
   void onWalletSendTransactionCompleted(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
 
-  bool importLegacyWallet(const QString &_password);
   bool save(const QString& _file, bool _details, bool _cache);
   void lock();
   void unlock();
@@ -147,7 +155,6 @@ Q_SIGNALS:
   void walletSynchronizationCompletedSignal(int _error, const QString& _error_text);
   void walletActualBalanceUpdatedSignal(quint64 _actual_balance);
   void walletPendingBalanceUpdatedSignal(quint64 _pending_balance);
-  void walletUnmixableBalanceUpdatedSignal(quint64 _dust_balance);
   void walletTransactionCreatedSignal(CryptoNote::TransactionId _transaction_id);
   void walletSendTransactionCompletedSignal(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
   void walletTransactionUpdatedSignal(CryptoNote::TransactionId _transaction_id);

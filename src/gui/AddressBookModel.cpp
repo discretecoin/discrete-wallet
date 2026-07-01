@@ -26,7 +26,7 @@ AddressBookModel::~AddressBookModel() {
 }
 
 int AddressBookModel::columnCount(const QModelIndex& _parent) const {
-  return 3;
+  return 2;
 }
 
 QVariant AddressBookModel::data(const QModelIndex& _index, int _role) const {
@@ -41,10 +41,16 @@ QVariant AddressBookModel::data(const QModelIndex& _index, int _role) const {
     switch (_index.column()) {
     case COLUMN_LABEL:
       return _index.data(ROLE_LABEL);
-    case COLUMN_ADDRESS:
-      return _index.data(ROLE_ADDRESS);
-    case COLUMN_PAYMENTID:
-      return _index.data(ROLE_PAYMENTID);
+    case COLUMN_ADDRESS: {
+      // Full PQ addresses are ~5000 characters — unreadable, and unusable,
+      // as a table cell. Elide for display; ROLE_ADDRESS still returns the
+      // full address for copy/send/whatever else needs the real value.
+      const QString full = _index.data(ROLE_ADDRESS).toString();
+      if (full.size() <= 36) {
+        return full;
+      }
+      return full.left(20) + QStringLiteral("…") + full.right(12);
+    }
     default:
       return QVariant();
     }
@@ -53,8 +59,6 @@ QVariant AddressBookModel::data(const QModelIndex& _index, int _role) const {
     return address.value("label");
   case ROLE_ADDRESS:
     return address.value("address");
-  case ROLE_PAYMENTID:
-    return address.value("paymentid");
   default:
     return QVariant();
   }
@@ -76,8 +80,6 @@ QVariant AddressBookModel::headerData(int _section, Qt::Orientation _orientation
     return tr("Label");
   case COLUMN_ADDRESS:
     return tr("Address");
-  case COLUMN_PAYMENTID:
-    return tr("PaymentID");
   }
 
   return QVariant();
@@ -99,12 +101,11 @@ int AddressBookModel::rowCount(const QModelIndex& _parent) const {
   return m_addressBook.size();
 }
 
-void AddressBookModel::addAddress(const QString& _label, const QString& _address, const QString& _paymentid) {
+void AddressBookModel::addAddress(const QString& _label, const QString& _address) {
   beginInsertRows(QModelIndex(), m_addressBook.size(), m_addressBook.size());
   QJsonObject newAddress;
   newAddress.insert("label", _label);
   newAddress.insert("address", _address);
-  newAddress.insert("paymentid", _paymentid);
   m_addressBook.append(newAddress);
   endInsertRows();
   saveAddressBook();

@@ -1,5 +1,6 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
 // Copyright (c) 2016-2026 The Karbowanec developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -39,44 +40,6 @@
 namespace WalletGui {
 
 namespace {
-
-bool parsePaymentId(const std::string& payment_id_str, Crypto::Hash& payment_id) {
-  return CryptoNote::parsePaymentId(payment_id_str, payment_id);
-}
-
-std::string convertPaymentId(const std::string& paymentIdString) {
-  if (paymentIdString.empty()) {
-    return "";
-  }
-
-  Crypto::Hash paymentId;
-  if (!parsePaymentId(paymentIdString, paymentId)) {
-    std::stringstream errorStr;
-    errorStr << "Payment id has invalid format: \"" + paymentIdString + "\", expected 64-character string";
-    throw std::runtime_error(errorStr.str());
-  }
-
-  std::vector<uint8_t> extra;
-  CryptoNote::BinaryArray extraNonce;
-  CryptoNote::setPaymentIdToTransactionExtraNonce(extraNonce, paymentId);
-  if (!CryptoNote::addExtraNonceToTransactionExtra(extra, extraNonce)) {
-    std::stringstream errorStr;
-    errorStr << "Something went wrong with payment_id. Please check its format: \"" + paymentIdString + "\", expected 64-character string";
-    throw std::runtime_error(errorStr.str());
-  }
-
-  return std::string(extra.begin(), extra.end());
-}
-
-std::string extractPaymentId(const std::string& extra) {
-  std::vector<uint8_t> extraVec;
-  extraVec.reserve(extra.size());
-  std::for_each(extra.begin(), extra.end(), [&extraVec](const char el) { extraVec.push_back(el); });
-
-  Crypto::Hash paymentId;
-  std::string res = (CryptoNote::getPaymentIdFromTxExtra(extraVec, paymentId) && paymentId != CryptoNote::NULL_HASH ? Common::podToHex(paymentId) : "");
-  return res;
-}
 
 inline std::string interpret_rpc_response(bool ok, const std::string& status) {
   std::string err;
@@ -124,14 +87,6 @@ public:
   void deinit() override {
   }
 
-  std::string convertPaymentId(const std::string& paymentIdString) override {
-    return WalletGui::convertPaymentId(paymentIdString);
-  }
-
-  std::string extractPaymentId(const std::string& extra) override {
-    return WalletGui::extractPaymentId(extra);
-  }
-
   uint64_t getLastKnownBlockHeight() const override {
     return m_node.getLastKnownBlockHeight();
   }
@@ -150,14 +105,6 @@ public:
 
   uint64_t getMinimalFee() override {
     return m_node.getMinimalFee();
-  }
-
-  std::string feeAddress() const override {
-    return m_node.feeAddress();
-  }
-
-  uint64_t feeAmount() const override {
-    return m_node.feeAmount();
   }
 
   uint64_t getDifficulty() override {
@@ -208,19 +155,24 @@ public:
     return m_node.getNextReward();
   }
 
-  bool getBlockTemplate(CryptoNote::Block& b, const CryptoNote::AccountKeys& acc, const CryptoNote::BinaryArray& ex_nonce, CryptoNote::difficulty_type& diffic, uint32_t& height) override {
-    // not implemented
+  // Built-in mining needs in-process access to the wallet's spend secret to
+  // sign each candidate block (identity-bound mining). A remote RPC node has
+  // no such access, so mining is unsupported there.
+  bool startMining(const CryptoPQ::KemPublicKey&, const CryptoPQ::DsaPublicKey&,
+                   const CryptoPQ::DsaSecretKey&, size_t) override {
     return false;
   }
 
-  bool handleBlockFound(CryptoNote::Block& b) override {
-    // not implemented
+  bool stopMining() override {
     return false;
   }
-  
-  bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& block, Crypto::Hash& res) override {
-    // unsupported
+
+  bool isMining() override {
     return false;
+  }
+
+  uint64_t getHashRate() override {
+    return 0;
   }
 
   uint64_t getAlreadyGeneratedCoins() override {
@@ -264,12 +216,14 @@ public:
     return &m_node;
   }
 
-  void getAccountNumber(const std::string& address, std::string& accountNumber, const std::function<void(std::error_code)>& callback) override {
-    m_node.getAccountNumber(address, accountNumber, callback);
+  void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                    uint32_t& blockHeight, uint32_t& txIndex, const std::function<void(std::error_code)>& callback) override {
+    m_node.getPqAccount(viewPubHex, spendPubHex, registered, blockHeight, txIndex, callback);
   }
 
-  void resolveAccountNumber(const std::string& accountNumber, std::string& address, const std::function<void(std::error_code)>& callback) override {
-    m_node.resolveAccountNumber(accountNumber, address, callback);
+  void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                        std::string& viewPubHex, std::string& spendPubHex, const std::function<void(std::error_code)>& callback) override {
+    m_node.resolvePqAccount(blockHeight, txIndex, found, viewPubHex, spendPubHex, callback);
   }
 
 private:
@@ -398,14 +352,6 @@ public:
     m_nodeServer.sendStopSignal();
   }
 
-  std::string convertPaymentId(const std::string& paymentIdString) override {
-    return WalletGui::convertPaymentId(paymentIdString);
-  }
-
-  std::string extractPaymentId(const std::string& extra) override {
-    return WalletGui::extractPaymentId(extra);
-  }
-
   uint64_t getLastKnownBlockHeight() const override {
     return m_node.getLastKnownBlockHeight();
   }
@@ -462,14 +408,6 @@ public:
     return m_core.getMinimalFee();
   }
 
-  std::string feeAddress() const override {
-    return m_node.feeAddress();
-  }
-
-  uint64_t feeAmount() const override {
-    return m_node.feeAmount();
-  }
-
   CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo() override {
     return m_node.getLastLocalBlockHeaderInfo();
   }
@@ -482,16 +420,25 @@ public:
     return m_node.getNextReward();
   }
 
-  bool getBlockTemplate(CryptoNote::Block& b, const CryptoNote::AccountKeys& acc, const CryptoNote::BinaryArray& ex_nonce, CryptoNote::difficulty_type& diffic, uint32_t& height) override {
-    return m_core.get_block_template(b, acc, diffic, height, ex_nonce);
+  // In-process mining: the wallet's already-derived PQ identity is handed
+  // straight to Core's own built-in PQ miner (the same miner the daemon's
+  // start_mining/stop_mining RPC drives), which threads the nonce search and
+  // signs each candidate block with spendSk itself. See CryptoNoteCore/Miner.cpp.
+  bool startMining(const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub,
+                   const CryptoPQ::DsaSecretKey& spendSk, size_t threadCount) override {
+    return m_core.get_miner().startPq(viewPub, spendPub, spendSk, threadCount);
   }
 
-  bool handleBlockFound(CryptoNote::Block& b) override {
-    return m_core.handle_block_found(b);
+  bool stopMining() override {
+    return m_core.get_miner().stop();
   }
-  
-  bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& block, Crypto::Hash& res) override {
-    return m_core.getBlockLongHash(context, block, res);
+
+  bool isMining() override {
+    return m_core.get_miner().is_mining();
+  }
+
+  uint64_t getHashRate() override {
+    return m_core.get_miner().get_speed();
   }
 
   uint64_t getAlreadyGeneratedCoins() override {
@@ -535,12 +482,40 @@ public:
     return &m_node;
   }
 
-  void getAccountNumber(const std::string& address, std::string& accountNumber, const std::function<void(std::error_code)>& callback) override {
-    m_node.getAccountNumber(address, accountNumber, callback);
+  // CryptoNote::InProcessNode does not implement the PQ account registry (it is
+  // declared concrete-only on Core, not on the abstract ICore it wraps), so we
+  // reach the registry directly through the Core instance this class already
+  // owns — mirroring exactly what RpcServer::on_get_pq_account /
+  // on_resolve_pq_account do for the RPC path.
+  void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                    uint32_t& blockHeight, uint32_t& txIndex, const std::function<void(std::error_code)>& callback) override {
+    std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub;
+    std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub;
+    size_t sz = 0;
+    if (!Common::fromHex(viewPubHex, viewPub.data(), viewPub.size(), sz) || sz != viewPub.size() ||
+        !Common::fromHex(spendPubHex, spendPub.data(), spendPub.size(), sz) || sz != spendPub.size()) {
+      callback(make_error_code(CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR));
+      return;
+    }
+
+    registered = m_core.getPqAccountNumber(CryptoNote::getPqAccountIdentityHash(viewPub, spendPub), blockHeight, txIndex);
+    if (!registered) {
+      blockHeight = 0;
+      txIndex = 0;
+    }
+    callback(std::error_code());
   }
 
-  void resolveAccountNumber(const std::string& accountNumber, std::string& address, const std::function<void(std::error_code)>& callback) override {
-    m_node.resolveAccountNumber(accountNumber, address, callback);
+  void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                        std::string& viewPubHex, std::string& spendPubHex, const std::function<void(std::error_code)>& callback) override {
+    std::array<uint8_t, TX_EXTRA_PQ_VIEW_PUBKEY_SIZE> viewPub;
+    std::array<uint8_t, TX_EXTRA_PQ_SPEND_PUBKEY_SIZE> spendPub;
+    found = m_core.resolvePqAccountNumber(blockHeight, txIndex, viewPub, spendPub);
+    if (found) {
+      viewPubHex = Common::toHex(viewPub.data(), viewPub.size());
+      spendPubHex = Common::toHex(spendPub.data(), spendPub.size());
+    }
+    callback(std::error_code());
   }
 
 private:

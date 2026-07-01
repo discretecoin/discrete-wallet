@@ -15,12 +15,6 @@
 #include "RestoreFromMnemonicSeedDialog.h"
 #include "Mnemonics/electrum-words.h"
 
-extern "C"
-{
-#include "crypto/keccak.h"
-#include "crypto/crypto-ops.h"
-}
-
 #include "ui_restorefrommnemonicseeddialog.h"
 
 namespace WalletGui {
@@ -76,16 +70,14 @@ void RestoreFromMnemonicSeedDialog::onTextChanged() {
 }
 
 void RestoreFromMnemonicSeedDialog::onAccept() {
+  // The 25 words encode the 32-byte master seed directly (m_keys.spendSecretKey);
+  // WalletLegacy::initWithKeys derives the PQ identity from it, so no separate
+  // public-key derivation is needed here.
   std::string seed_language = "";
   QString seedString = getSeedString();
   if (!Crypto::ElectrumWords::words_to_bytes(seedString.toStdString(), m_keys.spendSecretKey, seed_language)) {
     QMessageBox::critical(nullptr, tr("Mnemonic seed is not correct"), tr("There must be an error in mnemonic seed. Make sure you entered it correctly."), QMessageBox::Ok);
     return;
-  } else {
-    Crypto::secret_key_to_public_key(m_keys.spendSecretKey,m_keys.address.spendPublicKey);
-    Crypto::SecretKey second;
-    keccak((uint8_t *)&m_keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-    Crypto::generate_deterministic_keys(m_keys.address.viewPublicKey,m_keys.viewSecretKey,second);
   }
 
   if (getFilePath().isEmpty()) {

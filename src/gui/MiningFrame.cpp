@@ -214,7 +214,6 @@ MiningFrame::MiningFrame(QWidget* _parent) :
   connect(&*m_miner, &Miner::minerStoppedSignal, this, &MiningFrame::onMinerStopped, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::minerThreadsChangedSignal, this, &MiningFrame::onMinerThreadsChanged, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::minerTemplateUpdatedSignal, this, &MiningFrame::onMinerTemplateUpdated, Qt::QueuedConnection);
-  connect(&*m_miner, &Miner::blockFoundSignal, this, &MiningFrame::onBlockFound, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::miningErrorSignal, this, &MiningFrame::onMinerError, Qt::QueuedConnection);
   connect(m_coreLogWatcher, &LogFileWatcher::newLogStringSignal, this, &MiningFrame::updateCoreLog, Qt::QueuedConnection);
 }
@@ -440,11 +439,6 @@ void MiningFrame::appendMiningEvent(const QString& _kind, const QString& _messag
   scrollBar->setValue(scrollBar->maximum());
 }
 
-void MiningFrame::showBlockFound(quint64 _height) {
-  Q_UNUSED(_height);
-  m_ui->m_miningLogTabs->setCurrentWidget(m_ui->m_eventLogTab);
-}
-
 void MiningFrame::appendRawLogLine(const QString& _line) {
   const QString message = _line.trimmed();
   if (message.isEmpty()) {
@@ -473,7 +467,6 @@ void MiningFrame::resetSessionStats() {
   m_sessionPeakHashRate = 0;
   m_lastAnnouncedPeakHashRate = 0;
   m_lastHashRate = 0;
-  m_sessionBlocksFound = 0;
   m_hX.clear();
   m_hY.clear();
   m_averageHashRateY.clear();
@@ -505,7 +498,6 @@ void MiningFrame::updateSessionStats() {
   m_ui->m_totalHashesValue->setText(formatMagnitude(m_sessionTotalHashes));
   m_ui->m_averageHashRateValue->setText(formatHashRate(averageHashRate));
   m_ui->m_peakHashRateValue->setText(formatHashRate(m_sessionPeakHashRate));
-  m_ui->m_blocksFoundValue->setText(QString::number(m_sessionBlocksFound));
 
   if (m_lastHashRate > 0 && m_currentDifficulty > 0) {
     const qint64 etaSeconds = static_cast<qint64>(m_currentDifficulty / m_lastHashRate);
@@ -920,25 +912,6 @@ void MiningFrame::onMinerThreadsChanged(quint32 _threads) {
 void MiningFrame::onMinerTemplateUpdated(quint64 _height, quint64 _difficulty) {
   Q_UNUSED(_height);
   updateDifficulty(_difficulty);
-}
-
-void MiningFrame::onBlockFound(const QString& _hash, quint64 _height, quint64 _difficulty, const QString& _pow) {
-  Q_UNUSED(_pow);
-
-  ++m_sessionBlocksFound;
-  QString shortHash = _hash.left(12);
-  if (_hash.size() > shortHash.size()) {
-    shortHash += QStringLiteral("...");
-  }
-
-  appendMiningEvent(QStringLiteral("BLOCK"), tr("Found block %1 at difficulty %2 (%3)")
-      .arg(_height)
-      .arg(formatMagnitude(_difficulty))
-      .arg(shortHash));
-  m_roundHashes = 0;
-  showBlockFound(_height);
-  addHashRateEventMarker(true);
-  updateSessionStats();
 }
 
 void MiningFrame::onMinerError(const QString& _message) {

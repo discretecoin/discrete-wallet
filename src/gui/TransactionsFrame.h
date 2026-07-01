@@ -66,7 +66,6 @@ public slots:
 public Q_SLOTS:
   void copyTxHash();
   void copyAmount();
-  void copyPaymentID();
   void showTxDetails();
   void computeSelected();
   void showTransactionDetails(const QModelIndex& _index);

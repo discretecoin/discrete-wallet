@@ -9,9 +9,7 @@
 #include <QMessageBox>
 #include <QStandardPaths>
 
-#include "Common/Base58.h"
 #include "Common/StringTools.h"
-#include "CryptoNoteCore/CryptoNoteTools.h"
 #include "CurrencyAdapter.h"
 
 #include "ImportKeyDialog.h"
@@ -63,7 +61,8 @@ void ImportKeyDialog::selectPathClicked() {
 }
 
 void ImportKeyDialog::onTextChanged() {
-  if (getKeyString().isEmpty() || getKeyString().size() != 183) {
+  // The master seed is the 32-byte secret the mnemonic words encode, hex-printed.
+  if (getKeyString().isEmpty() || getKeyString().size() != 64) {
     m_ui->m_okButton->setEnabled(false);
   } else {
     m_ui->m_okButton->setEnabled(true);
@@ -71,16 +70,10 @@ void ImportKeyDialog::onTextChanged() {
 }
 
 void ImportKeyDialog::onAccept() {
-  uint64_t addressPrefix;
-  std::string data;
   QString keyString = getKeyString().trimmed();
-  if (!keyString.isEmpty() && Tools::Base58::decode_addr(keyString.toStdString(), addressPrefix, data) && addressPrefix == CurrencyAdapter::instance().getAddressPrefix() && data.size() == sizeof(m_keys)) {
-    if (!CryptoNote::fromBinaryArray(m_keys, Common::asBinaryArray(data))) {
-      QMessageBox::warning(nullptr, tr("Wallet keys are not valid"), tr("Failed to parse account keys"), QMessageBox::Ok);
-      return;
-    }
-  } else {
-    QMessageBox::warning(nullptr, tr("Wallet keys are not valid"), tr("The private keys you entered are not valid."), QMessageBox::Ok);
+  size_t size = 0;
+  if (keyString.isEmpty() || !Common::fromHex(keyString.toStdString(), &m_keys.spendSecretKey, sizeof(m_keys.spendSecretKey), size) || size != sizeof(m_keys.spendSecretKey)) {
+    QMessageBox::warning(nullptr, tr("Master seed is not valid"), tr("The master seed you entered is not valid."), QMessageBox::Ok);
     return;
   }
 

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Discrete
+GenericName=Discrete
+Comment=Discrete wallet
+Exec=@WALLET_NAME@ %U
+Terminal=false
+Type=Application
+Icon=discrete
+MimeType=x-scheme-handler/discrete;
+Categories=Office;Finance;
+Version=1.0
+X-AppImage-Version=@WALLET_VERSION@

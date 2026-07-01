@@ -44,7 +44,6 @@ private:
   void updateWalletAddress(const QString& _address);
   void updateActualBalance(quint64 _balance);
   void updatePendingBalance(quint64 _balance);
-  void updateUnmixableBalance(quint64 _balance);
   void reset();
   void fetchAccountNumber(const QString& _address);
   void updateAccountNumberDisplay();

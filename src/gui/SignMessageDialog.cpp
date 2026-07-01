@@ -58,20 +58,19 @@ void SignMessageDialog::messageChanged() {
 
 void SignMessageDialog::verifyMessage() {
   m_ui->m_verificationResult->setText("");
-  CryptoNote::AccountPublicAddress acc = boost::value_initialized<CryptoNote::AccountPublicAddress>();
-  std::string addr_str = m_ui->m_addressEdit->text().trimmed().toStdString();
+  QString destination = m_ui->m_addressEdit->text().trimmed();
   QString message = m_ui->m_verifyMessageEdit->toPlainText().toUtf8();
   QString signature = m_ui->m_verifySignatureEdit->toPlainText();
-  if(addr_str.empty() || message.isEmpty() || signature.isEmpty())
+  if (destination.isEmpty() || message.isEmpty() || signature.isEmpty())
     return;
-  if(CurrencyAdapter::instance().getCurrency().parseAccountAddressString(addr_str, acc)) {
-    if (WalletAdapter::instance().verifyMessage(message, acc, signature)) {
-      m_ui->m_verificationResult->setText(tr("Signature is valid"));
-    } else {
-      m_ui->m_verificationResult->setText(tr("Signature is invalid!"));
-    }
-  } else {
+  if (!CurrencyAdapter::instance().validateAddress(destination)) {
     m_ui->m_verificationResult->setText(tr("Address is invalid!"));
+    return;
+  }
+  if (WalletAdapter::instance().verifyMessage(message, destination, signature)) {
+    m_ui->m_verificationResult->setText(tr("Signature is valid"));
+  } else {
+    m_ui->m_verificationResult->setText(tr("Signature is invalid!"));
   }
 }
 

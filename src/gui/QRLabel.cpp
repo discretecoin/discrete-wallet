@@ -32,8 +32,16 @@ QRLabel::~QRLabel() {
 }
 
 void QRLabel::showQRCode(const QString& _dataString) {
+  setPixmap(QPixmap());
+
   QRcode *qrcode = QRcode_encodeString(_dataString.toUtf8().constData(), 0, QR_ECLEVEL_L, QR_MODE_8, 1);
   if (qrcode == nullptr) {
+    // Encoding fails (returns null) once the input exceeds a QR code's
+    // absolute capacity — ~2953 bytes even at the largest version and lowest
+    // error correction. A full PQ address is ~5000 characters, well past
+    // that; leaving the label blank here used to look like a silent bug.
+    setText(tr("This content is too long to encode as a QR code."));
+    setEnabled(false);
     return;
   }
 

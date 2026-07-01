@@ -108,20 +108,6 @@ quintptr NodeAdapter::getPeerCount() {
   return m_node->getPeerCount();
 }
 
-std::string NodeAdapter::convertPaymentId(const QString& _paymentIdString) const {
-  Q_CHECK_PTR(m_node);
-  try {
-    return m_node->convertPaymentId(_paymentIdString.toStdString());
-  } catch (std::runtime_error& err) {
-  }
-  return std::string();
-}
-
-QString NodeAdapter::extractPaymentId(const std::string& _extra) const {
-  Q_CHECK_PTR(m_node);
-  return QString::fromStdString(m_node->extractPaymentId(_extra));
-}
-
 CryptoNote::IWalletLegacy* NodeAdapter::createWallet() const {
   Q_CHECK_PTR(m_node);
   return m_node->createWallet();
@@ -290,16 +276,6 @@ quint64 NodeAdapter::getMinimalFee() const {
   return m_node->getMinimalFee();
 }
 
-quint64 NodeAdapter::getNodeFeeAmount() const {
-  Q_CHECK_PTR(m_node);
-  return m_node->feeAmount();
-}
-
-QString NodeAdapter::getNodeFeeAddress() const {
-  Q_CHECK_PTR(m_node);
-  return QString::fromStdString(m_node->feeAddress());
-}
-
 CryptoNote::BlockHeaderInfo NodeAdapter::getLastLocalBlockHeaderInfo() {
   Q_CHECK_PTR(m_node);
   return m_node->getLastLocalBlockHeaderInfo();
@@ -320,19 +296,24 @@ std::vector<CryptoNote::p2pConnection> NodeAdapter::getConnections() {
   return m_node->getConnections();
 }
 
-bool NodeAdapter::getBlockTemplate(CryptoNote::Block& b, const CryptoNote::AccountKeys& acc, const CryptoNote::BinaryArray& extraNonce, CryptoNote::difficulty_type& difficulty, uint32_t& height) {
+bool NodeAdapter::startMining(const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub, const CryptoPQ::DsaSecretKey& spendSk, size_t threadCount) {
   Q_CHECK_PTR(m_node);
-  return m_node->getBlockTemplate(b, acc, extraNonce, difficulty, height);
+  return m_node->startMining(viewPub, spendPub, spendSk, threadCount);
 }
 
-bool NodeAdapter::handleBlockFound(CryptoNote::Block& b) {
+bool NodeAdapter::stopMining() {
   Q_CHECK_PTR(m_node);
-  return m_node->handleBlockFound(b);
+  return m_node->stopMining();
 }
 
-bool NodeAdapter::getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& block, Crypto::Hash& res) {
+bool NodeAdapter::isMining() {
   Q_CHECK_PTR(m_node);
-  return m_node->getBlockLongHash(context, block, res);
+  return m_node->isMining();
+}
+
+quint64 NodeAdapter::getHashRate() {
+  Q_CHECK_PTR(m_node);
+  return m_node->getHashRate();
 }
 
 
@@ -498,14 +479,16 @@ System::Dispatcher &NodeAdapter::getDispatcher() {
   return m_node->getDispatcher();
 }
 
-void NodeAdapter::getAccountNumber(const std::string& address, std::string& accountNumber, const std::function<void(std::error_code)>& callback) {
+void NodeAdapter::getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                               uint32_t& blockHeight, uint32_t& txIndex, const std::function<void(std::error_code)>& callback) {
   Q_CHECK_PTR(m_node);
-  m_node->getAccountNumber(address, accountNumber, callback);
+  m_node->getPqAccount(viewPubHex, spendPubHex, registered, blockHeight, txIndex, callback);
 }
 
-void NodeAdapter::resolveAccountNumber(const std::string& accountNumber, std::string& address, const std::function<void(std::error_code)>& callback) {
+void NodeAdapter::resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                   std::string& viewPubHex, std::string& spendPubHex, const std::function<void(std::error_code)>& callback) {
   Q_CHECK_PTR(m_node);
-  m_node->resolveAccountNumber(accountNumber, address, callback);
+  m_node->resolvePqAccount(blockHeight, txIndex, found, viewPubHex, spendPubHex, callback);
 }
 
 }

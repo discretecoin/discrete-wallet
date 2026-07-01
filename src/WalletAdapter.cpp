@@ -1,6 +1,7 @@
 // Copyright (c) 2011-2016 The Cryptonote developers
 // Copyright (c) 2015-2016 XDN developers
 // Copyright (c) 2016-2026 The Karbo developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,12 +19,14 @@
 #include "WalletAdapter.h"
 
 #include "CryptoNoteConfig.h"
+#include "AccountNumber.h"
+#include "PqAddress.h"
+#include "Wallet/PqRecipient.h"
 #include "CryptoNoteCore/TransactionExtra.h"
+#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "crypto/crypto.h"
-#include "Common/Base58.h"
-#include "Common/Util.h"
+#include "Common/StringTools.h"
 #include "Wallet/WalletErrors.h"
-#include "Wallet/LegacyKeysImporter.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "ITransfersContainer.h"
 #include "NodeAdapter.h"
@@ -32,12 +35,7 @@
 #include "gui/VerifyMnemonicSeedDialog.h"
 #include "CurrencyAdapter.h"
 #include "LoggerAdapter.h"
-
-extern "C"
-{
-#include "crypto/keccak.h"
-#include "crypto/crypto-ops.h"
-}
+#include "WalletLegacy/WalletLegacy.h"
 
 #undef ERROR
 
@@ -123,14 +121,6 @@ quint64 WalletAdapter::getPendingBalance() const {
   return 0;
 }
 
-quint64 WalletAdapter::getUnmixableBalance() const {
-  try {
-    return m_wallet == nullptr ? 0 : m_wallet->unmixableBalance();
-  } catch (std::system_error&) {
-  }
-  return 0;
-}
-
 void WalletAdapter::open(const QString& _password) {
   Q_ASSERT(m_wallet == nullptr);
   Settings::instance().setEncrypted(!_password.isEmpty());
@@ -139,13 +129,7 @@ void WalletAdapter::open(const QString& _password) {
   m_wallet = NodeAdapter::instance().createWallet();
   m_wallet->addObserver(this);
 
-  if (QFile::exists(Settings::instance().getWalletFile())) {  
-    if (Settings::instance().getWalletFile().endsWith(".keys")) {
-      if (!importLegacyWallet(_password)) {
-        return;
-      }
-    }
-
+  if (QFile::exists(Settings::instance().getWalletFile())) {
     if (Settings::instance().getWalletFile().endsWith(".wallet")) {
       if (openFile(Settings::instance().getWalletFile(), true)) {
         try {
@@ -206,18 +190,6 @@ void WalletAdapter::createWallet() {
   }
 }
 
-void WalletAdapter::createNonDeterministic() {
-  m_wallet = NodeAdapter::instance().createWallet();
-  m_wallet->addObserver(this);
-  Settings::instance().setEncrypted(false);
-  try {
-    m_wallet->initAndGenerateNonDeterministic("");
-  } catch (std::system_error&) {
-    delete m_wallet;
-    m_wallet = nullptr;
-  }
-}
-
 void WalletAdapter::createWithKeys(const CryptoNote::AccountKeys& _keys) {
   m_wallet = NodeAdapter::instance().createWallet();
   m_wallet->addObserver(this);
@@ -234,38 +206,30 @@ void WalletAdapter::createWithKeys(const CryptoNote::AccountKeys& _keys, const q
   m_wallet->initWithKeys(_keys, "", _sync_heigth);
 }
 
-bool WalletAdapter::isOpen() const {
-  return m_wallet != nullptr;
+void WalletAdapter::createTrackingWallet(const CryptoNote::AccountKeys& _keys, const CryptoNote::PqTrackingKeys& _trackingKeys) {
+  m_wallet = NodeAdapter::instance().createWallet();
+  m_wallet->addObserver(this);
+  Settings::instance().setEncrypted(false);
+  Q_EMIT walletStateChangedSignal(tr("Importing tracking key"));
+  // initWithPqTrackingKeys is concrete-only (see SimpleWallet::new_tracking_wallet
+  // for the same pattern), so go through the concrete class rather than IWalletLegacy.
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  Q_ASSERT(wallet);
+  wallet->initWithPqTrackingKeys(_keys, _trackingKeys, "");
 }
 
-bool WalletAdapter::importLegacyWallet(const QString &_password) {
-  QString fileName = Settings::instance().getWalletFile();
-  Settings::instance().setEncrypted(!_password.isEmpty());
-  try {
-    fileName.replace(fileName.lastIndexOf(".keys"), 5, ".wallet");
-    if (!openFile(fileName, false)) {
-      delete m_wallet;
-      m_wallet = nullptr;
-      return false;
-    }
+void WalletAdapter::createTrackingWallet(const CryptoNote::AccountKeys& _keys, const CryptoNote::PqTrackingKeys& _trackingKeys, const quint32 _sync_heigth) {
+  m_wallet = NodeAdapter::instance().createWallet();
+  m_wallet->addObserver(this);
+  Settings::instance().setEncrypted(false);
+  Q_EMIT walletStateChangedSignal(tr("Importing tracking key"));
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  Q_ASSERT(wallet);
+  wallet->initWithPqTrackingKeys(_keys, _trackingKeys, "", _sync_heigth);
+}
 
-    CryptoNote::importLegacyKeys(Settings::instance().getWalletFile().toStdString(), _password.toStdString(), m_file);
-    closeFile();
-    Settings::instance().setWalletFile(fileName);
-    return true;
-  } catch (std::system_error& _err) {
-    closeFile();
-    if (_err.code().value() == CryptoNote::error::WRONG_PASSWORD) {
-      Settings::instance().setEncrypted(true);
-      Q_EMIT openWalletWithPasswordSignal(!_password.isEmpty());
-    }
-  } catch (std::runtime_error& _err) {
-    closeFile();
-  }
-
-  delete m_wallet;
-  m_wallet = nullptr;
-  return false;
+bool WalletAdapter::isOpen() const {
+  return m_wallet != nullptr;
 }
 
 void WalletAdapter::close() {
@@ -390,16 +354,6 @@ bool WalletAdapter::getAccountKeys(CryptoNote::AccountKeys& _keys) {
   return false;
 }
 
-Crypto::SecretKey WalletAdapter::getTxKey(Crypto::Hash& txid) {
-  Q_CHECK_PTR(m_wallet);
-  try {
-    return m_wallet->getTxKey(txid);
-  } catch (std::system_error&) {
-  }
-
-  return CryptoNote::NULL_SECRET_KEY;
-}
-
 std::vector<CryptoNote::TransactionOutputInformation> WalletAdapter::getOutputs() {
   Q_CHECK_PTR(m_wallet);
   try {
@@ -436,30 +390,43 @@ std::vector<CryptoNote::TransactionSpentOutputInformation> WalletAdapter::getSpe
   return {};
 }
 
-void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee, const QString& _payment_id, quint64 _mixin) {
+void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee) {
   Q_CHECK_PTR(m_wallet);
   try {
     lock();
     Q_EMIT walletStateChangedSignal(tr("Sending transaction"));
-    m_wallet->sendTransaction(_transfers, _fee, NodeAdapter::instance().convertPaymentId(_payment_id), _mixin, 0);
+    // The destination string (raw PQ address or account number) is resolved
+    // inside WalletLegacy::sendTransaction itself (see Wallet/PqRecipient.h);
+    // the GUI does not need to pre-resolve it. Mixin and payment IDs no longer
+    // exist in the PQ design, so both trailing parameters stay at 0.
+    m_wallet->sendTransaction(_transfers, _fee, "", 0, 0);
   } catch (std::system_error&) {
     unlock();
   }
 }
 
-// Prerequisites: deduce fee from transfers, selected outs amount and tansfers amount + fee should match
-void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, const std::list<CryptoNote::TransactionOutputInformation>& _selectedOuts, quint64 _fee, const QString& _payment_id, quint64 _mixin) {
-  Q_CHECK_PTR(m_wallet);
-
-  // can validate here that transfer amount + fee = selected outs amounts
-
-  try {
-    lock();
-    Q_EMIT walletStateChangedSignal(tr("Sending transaction"));
-    m_wallet->sendTransaction(_transfers, _selectedOuts, _fee, NodeAdapter::instance().convertPaymentId(_payment_id), _mixin, 0);
-  } catch (std::system_error&) {
-    unlock();
+bool WalletAdapter::getOwnPqIdentityHex(QString& _viewPubHex, QString& _spendPubHex) const {
+  CryptoNote::AccountKeys keys;
+  if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys)) {
+    return false;
   }
+
+  CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+  _viewPubHex = QString::fromStdString(Common::toHex(pq.viewPub.data(), pq.viewPub.size()));
+  _spendPubHex = QString::fromStdString(Common::toHex(pq.spendPub.data(), pq.spendPub.size()));
+  return true;
+}
+
+bool WalletAdapter::getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const {
+  CryptoNote::AccountKeys keys;
+  if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys)) {
+    return false;
+  }
+
+  // Same derivation the daemon's start_mining path uses, so a block this
+  // wallet mines is signed with the identity that also receives the reward.
+  CryptoNote::deriveMinerPqKeys(keys.spendSecretKey, _viewPub, _spendPub, _spendSk);
+  return true;
 }
 
 void WalletAdapter::registerAccountNumber() {
@@ -467,9 +434,10 @@ void WalletAdapter::registerAccountNumber() {
 
   CryptoNote::AccountKeys keys;
   m_wallet->getAccountKeys(keys);
+  CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
 
   std::vector<uint8_t> extra;
-  CryptoNote::addAccountRegistrationToExtra(extra, keys.address.spendPublicKey, keys.address.viewPublicKey);
+  CryptoNote::addPqAccountRegistrationToExtra(extra, pq.viewPub, pq.spendPub);
 
   std::string extraString(extra.begin(), extra.end());
 
@@ -484,32 +452,6 @@ void WalletAdapter::registerAccountNumber() {
   } catch (std::system_error&) {
     unlock();
   }
-}
-
-QString WalletAdapter::prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee, const QString& _payment_id, quint64 _mixin) {
-  Q_CHECK_PTR(m_wallet);
-  try {
-    lock();
-    Q_EMIT walletStateChangedSignal(tr("Preparing transaction"));
-    CryptoNote::TransactionId transactionId;
-    return QString::fromStdString(m_wallet->prepareRawTransaction(transactionId, _transfers, _fee, NodeAdapter::instance().convertPaymentId(_payment_id), _mixin, 0));
-  } catch (std::system_error&) {
-    unlock();
-  }
-  return QString();
-}
-
-QString WalletAdapter::prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, const std::list<CryptoNote::TransactionOutputInformation>& _selectedOuts, quint64 _fee, const QString& _payment_id, quint64 _mixin) {
-  Q_CHECK_PTR(m_wallet);
-  try {
-    lock();
-    Q_EMIT walletStateChangedSignal(tr("Preparing transaction"));
-    CryptoNote::TransactionId transactionId;
-    return QString::fromStdString(m_wallet->prepareRawTransaction(transactionId, _transfers, _selectedOuts, _fee, NodeAdapter::instance().convertPaymentId(_payment_id), _mixin, 0));
-  } catch (std::system_error&) {
-    unlock();
-  }
-  return QString();
 }
 
 bool WalletAdapter::changePassword(const QString& _oldPassword, const QString& _newPassword) {
@@ -618,7 +560,6 @@ void WalletAdapter::onWalletInitCompleted(int _error, const QString& _errorText)
   case 0: {
     Q_EMIT walletActualBalanceUpdatedSignal(m_wallet->actualBalance());
     Q_EMIT walletPendingBalanceUpdatedSignal(m_wallet->pendingBalance());
-    Q_EMIT walletUnmixableBalanceUpdatedSignal(m_wallet->unmixableBalance());
     Q_EMIT updateWalletAddressSignal(QString::fromStdString(m_wallet->getAddress()));
     Q_EMIT reloadWalletTransactionsSignal();
     Q_EMIT walletStateChangedSignal(tr("Ready"));
@@ -736,10 +677,6 @@ void WalletAdapter::pendingBalanceUpdated(uint64_t _pending_balance) {
   Q_EMIT walletPendingBalanceUpdatedSignal(_pending_balance);
 }
 
-void WalletAdapter::unmixableBalanceUpdated(uint64_t _dust_balance) {
-  Q_EMIT walletUnmixableBalanceUpdatedSignal(_dust_balance);
-}
-
 void WalletAdapter::externalTransactionCreated(CryptoNote::TransactionId _transactionId) {
   if (!m_isSynchronized) {
     m_lastWalletTransactionId = _transactionId;
@@ -760,13 +697,13 @@ QString WalletAdapter::walletErrorMessage(int _error_code) {
     case CryptoNote::error::WalletErrorCodes::WRONG_PASSWORD:                return tr("The password is wrong");
     case CryptoNote::error::WalletErrorCodes::ALREADY_INITIALIZED:           return tr("The object is already initialized");
     case CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR:         return tr("Internal error occurred");
-    case CryptoNote::error::WalletErrorCodes::MIXIN_COUNT_TOO_BIG:           return tr("MixIn count is too big");
-    case CryptoNote::error::WalletErrorCodes::BAD_ADDRESS:                   return tr("Bad address");
+    case CryptoNote::error::WalletErrorCodes::BAD_ADDRESS:                   return tr("Bad address or account number");
     case CryptoNote::error::WalletErrorCodes::TRANSACTION_SIZE_TOO_BIG:      return tr("Transaction size is too big");
     case CryptoNote::error::WalletErrorCodes::WRONG_AMOUNT:                  return tr("Wrong amount");
     case CryptoNote::error::WalletErrorCodes::SUM_OVERFLOW:                  return tr("Sum overflow");
     case CryptoNote::error::WalletErrorCodes::ZERO_DESTINATION:              return tr("The destination is empty");
     case CryptoNote::error::WalletErrorCodes::TX_CANCEL_IMPOSSIBLE:          return tr("Impossible to cancel transaction");
+    case CryptoNote::error::WalletErrorCodes::TX_CANCELLED:                  return tr("The transaction was cancelled");
     case CryptoNote::error::WalletErrorCodes::WRONG_STATE:                   return tr("The wallet is in wrong state (maybe loading or saving), try again later");
     case CryptoNote::error::WalletErrorCodes::OPERATION_CANCELLED:           return tr("The operation you've requested has been cancelled");
     case CryptoNote::error::WalletErrorCodes::TX_TRANSFER_IMPOSSIBLE:        return tr("Transaction transfer impossible");
@@ -783,8 +720,11 @@ QString WalletAdapter::walletErrorMessage(int _error_code) {
     case CryptoNote::error::WalletErrorCodes::CHANGE_ADDRESS_NOT_FOUND:      return tr("Change address not found");
     case CryptoNote::error::WalletErrorCodes::DESTINATION_ADDRESS_REQUIRED:  return tr("Destination address required");
     case CryptoNote::error::WalletErrorCodes::DESTINATION_ADDRESS_NOT_FOUND: return tr("Destination address not found");
-    case CryptoNote::error::WalletErrorCodes::BAD_PAYMENT_ID:                return tr("Wrong payment id format");
+    case CryptoNote::error::WalletErrorCodes::BAD_PAYMENT_ID:                return tr("Wrong transaction extra format");
     case CryptoNote::error::WalletErrorCodes::BAD_TRANSACTION_EXTRA:         return tr("Wrong transaction extra format");
+    case CryptoNote::error::WalletErrorCodes::INSUFFICIENT_FUNDS:            return tr("Insufficient funds");
+    case CryptoNote::error::WalletErrorCodes::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION: return tr("Amount is too large for one transaction");
+    case CryptoNote::error::WalletErrorCodes::ACCOUNT_NOT_REGISTERED:        return tr("That account number is not registered on chain");
     default:                                                                 return tr("Unknown error");
   }
 }
@@ -882,92 +822,41 @@ void WalletAdapter::updateBlockStatusTextWithDelay() {
   QTimer::singleShot(5000, this, SLOT(updateBlockStatusText()));
 }
 
-bool WalletAdapter::isDeterministic() const {
-  Crypto::SecretKey second;
-  CryptoNote::AccountKeys keys;
-  WalletAdapter::instance().getAccountKeys(keys);
-  keccak((uint8_t *)&keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-  sc_reduce32((uint8_t *)&second);
-  bool keys_deterministic = memcmp(second.data,keys.viewSecretKey.data, sizeof(Crypto::SecretKey)) == 0;
-  return keys_deterministic;
-}
-
-bool WalletAdapter::isDeterministic(CryptoNote::AccountKeys& _keys) const {
-  Crypto::SecretKey second;
-  WalletAdapter::instance().getAccountKeys(_keys);
-  keccak((uint8_t *)&_keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-  sc_reduce32((uint8_t *)&second);
-  bool keys_deterministic = memcmp(second.data,_keys.viewSecretKey.data, sizeof(Crypto::SecretKey)) == 0;
-  return keys_deterministic;
+bool WalletAdapter::isTrackingWallet() const {
+  Q_CHECK_PTR(m_wallet);
+  try {
+    return m_wallet->isTrackingWallet();
+  } catch (std::system_error&) {
+  }
+  return false;
 }
 
 QString WalletAdapter::getMnemonicSeed(QString _language) const {
-  std::string electrum_words;
-  if(Settings::instance().isTrackingMode()) {
-    // error "Wallet is watch-only and has no seed";
+  if (isTrackingWallet()) {
     return "Wallet is watch-only and has no seed";
   }
-  if(!WalletAdapter::instance().isDeterministic()) {
-    // error "Wallet is non-deterministic and has no seed";
-    return "Wallet is non-deterministic and has no seed";
+
+  Q_CHECK_PTR(m_wallet);
+  std::string electrum_words;
+  if (!m_wallet->getSeed(electrum_words)) {
+    return "This wallet has no seed";
   }
-  CryptoNote::AccountKeys keys;
-  WalletAdapter::instance().getAccountKeys(keys);
-  std::string seed_language = _language.toUtf8().constData();
-  Crypto::ElectrumWords::bytes_to_words(keys.spendSecretKey, electrum_words, seed_language);
   return QString::fromStdString(electrum_words);
 }
 
 CryptoNote::AccountKeys WalletAdapter::getKeysFromMnemonicSeed(QString& _seed) const {
   CryptoNote::AccountKeys keys;
-  std::string m_seed_language;
-  if(!Crypto::ElectrumWords::words_to_bytes(_seed.toStdString(), keys.spendSecretKey, m_seed_language)) {
+  std::string seedLanguage;
+  if (!Crypto::ElectrumWords::words_to_bytes(_seed.toStdString(), keys.spendSecretKey, seedLanguage)) {
     QMessageBox::critical(nullptr, tr("Mnemonic seed is not correct"), tr("There must be an error in mnemonic seed. Make sure you entered it correctly."), QMessageBox::Ok);
   }
-  Crypto::secret_key_to_public_key(keys.spendSecretKey,keys.address.spendPublicKey);
-  Crypto::SecretKey second;
-  keccak((uint8_t *)&keys.spendSecretKey, sizeof(Crypto::SecretKey), (uint8_t *)&second, sizeof(Crypto::SecretKey));
-  Crypto::generate_deterministic_keys(keys.address.viewPublicKey,keys.viewSecretKey,second);
   return keys;
-}
-
-QString WalletAdapter::getTxProof(Crypto::Hash& _txid, CryptoNote::AccountPublicAddress& _address, Crypto::SecretKey& _tx_key) {
-  Q_CHECK_PTR(m_wallet);
-  try {
-    std::string sig_str;
-    m_wallet->getTxProof(_txid, _address, _tx_key, sig_str);
-    return QString::fromStdString(sig_str);
-  } catch (std::system_error&) {
-    QMessageBox::critical(nullptr, tr("Failed to get the transaction proof"), tr("Failed to get the transaction proof."), QMessageBox::Ok);
-    return QString();
-  }
-}
-
-QString WalletAdapter::getReserveProof(const quint64 &_reserve, const QString &_message) {
-  Q_CHECK_PTR(m_wallet);
-  if(Settings::instance().isTrackingMode()) {
-    QMessageBox::critical(nullptr, tr("Failed to get the reserve proof"), tr("This is tracking wallet. The reserve proof can be generated only by a full wallet."), QMessageBox::Ok);
-    return QString();
-  }
-  try {
-    uint64_t amount = 0;
-    if (_reserve == 0) {
-      amount = m_wallet->actualBalance();
-    } else {
-      amount = _reserve;
-    }
-    const std::string sig_str = m_wallet->getReserveProof(amount, (!_message.isEmpty() ? _message.toStdString() : ""));
-    return QString::fromStdString(sig_str);
-  } catch (std::system_error&) {
-    QMessageBox::critical(nullptr, tr("Failed to get the reserve proof"), tr("Failed to get the reserve proof."), QMessageBox::Ok);
-    return QString();
-  }
 }
 
 QString WalletAdapter::signMessage(const QString &data) {
   Q_CHECK_PTR(m_wallet);
-  if(Settings::instance().isTrackingMode()) {
-    QMessageBox::critical(nullptr, tr("Failed to sign message"), tr("This is tracking wallet. The message can be signed only by a full wallet."), QMessageBox::Ok);
+  if (isTrackingWallet()) {
+    QMessageBox::critical(nullptr, tr("Failed to sign message"), tr("This is a watch-only wallet. The message can be signed only by a full wallet."), QMessageBox::Ok);
     return QString();
   }
 
@@ -975,10 +864,18 @@ QString WalletAdapter::signMessage(const QString &data) {
   return QString::fromUtf8(sig_str.data(), sig_str.size());
 }
 
-bool WalletAdapter::verifyMessage(const QString &data, const CryptoNote::AccountPublicAddress &address, const QString &signature) {
+bool WalletAdapter::verifyMessage(const QString &data, const QString &_destination, const QString &signature) {
   Q_CHECK_PTR(m_wallet);
 
-  return m_wallet->verify_message(data.toStdString(), address, signature.toStdString());
+  CryptoPQ::KemPublicKey viewPub;
+  CryptoPQ::DsaPublicKey spendPub;
+  uint64_t subaddrIndexT = 0;
+  if (!CryptoNote::resolvePqRecipient(*NodeAdapter::instance().getNode(), CurrencyAdapter::instance().isTestnet(),
+                                      _destination.toStdString(), viewPub, spendPub, subaddrIndexT)) {
+    return false;
+  }
+
+  return CryptoNote::verifyMessagePq(data.toStdString(), spendPub, signature.toStdString());
 }
 
 size_t WalletAdapter::getUnlockedOutputsCount() {

@@ -104,18 +104,14 @@ private:
   void updateWalletAddress(const QString& _address);
   void reset();
   void onUriOpenSignal();
-  void onSendOutputs(QList<CryptoNote::TransactionOutputInformation> _selectedOutputs);
   void adjustForCurrentFile(const QString& filePath);
   void updateRecentActionList();
-  void updateUnmixableBalance(quint64 _balance);
   void payTo(const QModelIndex& _index);
 
   Q_SLOT void createWallet();
-  Q_SLOT void createNonDeterministicWallet();
   Q_SLOT void openWallet();
   Q_SLOT void closeWallet();
   Q_SLOT void importKey();
-  Q_SLOT void importKeys();
   Q_SLOT void backupWallet();
   Q_SLOT void resetWallet();
   Q_SLOT void encryptWallet();
@@ -140,7 +136,6 @@ private:
   Q_SLOT void showNormalIfMinimized(bool fToggleHidden = false);
   Q_SLOT void showMnemonicSeed();
   Q_SLOT void restoreFromMnemonicSeed();
-  Q_SLOT void getBalanceProof();
   Q_SLOT void lockWalletWithPassword();
   Q_SLOT void openWalletRpcSettings();
 

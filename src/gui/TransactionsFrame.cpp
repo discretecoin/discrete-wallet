@@ -37,9 +37,7 @@ TransactionsFrame::TransactionsFrame(QWidget* _parent) : QFrame(_parent), m_ui(n
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_DATE, 90);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_FEE, 45);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_ADDRESS, 100);
-  m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_PAYMENT_ID, 200);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_HASH, 200);
-  m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_SECRET_KEY, 200);
 
   connect(m_ui->m_transactionsView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &TransactionsFrame::computeSelected);
 
@@ -49,7 +47,6 @@ TransactionsFrame::TransactionsFrame(QWidget* _parent) : QFrame(_parent), m_ui(n
 
   contextMenu = new QMenu();
   contextMenu->addAction(QString(tr("Copy transaction &hash")), this, SLOT(copyTxHash()));
-  contextMenu->addAction(QString(tr("Copy Payment &ID")), this, SLOT(copyPaymentID()));
   contextMenu->addAction(QString(tr("Copy &amount")), this, SLOT(copyAmount()));
   contextMenu->addAction(QString(tr("Show &details")), this, SLOT(showTxDetails()));
 
@@ -100,7 +97,7 @@ void TransactionsFrame::exportToCsv() {
   QString file = QFileDialog::getSaveFileName(&MainWindow::instance(), tr("Select CSV file"), QDir::homePath(), "CSV (*.csv)");
   if (!file.isEmpty()) {
     QByteArray res;
-    res.append("\"Date\",\"Amount\",\"Fee\",\"Hash\",\"Height\",\"Address\",\"Payment ID\",\"Key\"\n");
+    res.append("\"Date\",\"Amount\",\"Fee\",\"Hash\",\"Height\",\"Address\"\n");
     QModelIndexList selection = m_ui->m_transactionsView->selectionModel()->selectedRows();
     if(selection.isEmpty()) {
       m_ui->m_transactionsView->selectAll();
@@ -108,26 +105,20 @@ void TransactionsFrame::exportToCsv() {
       foreach (QModelIndex index, all){
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_DATE).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_AMOUNT).data().toString().toUtf8()).append("\",");
-        //res.append("\"").append(CurrencyAdapter::instance().formatAmount(index.data(TransactionsModel::ROLE_FEE).value<quint64>())).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_FEE).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_HASH).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.data(TransactionsModel::ROLE_HEIGHT).toString().toUtf8()).append("\",");
-        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_ADDRESS).data().toString().toUtf8()).append("\",");
-        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_PAYMENT_ID).data().toString().toUtf8()).append("\",");
-        res.append("\"").append(index.data(TransactionsModel::ROLE_SECRET_KEY).toByteArray().toHex().toUpper()).append("\"\n");
+        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_ADDRESS).data().toString().toUtf8()).append("\"\n");
       }
       m_ui->m_transactionsView->clearSelection();
     } else {
       foreach (QModelIndex index, selection){
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_DATE).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_AMOUNT).data().toString().toUtf8()).append("\",");
-        //res.append("\"").append(CurrencyAdapter::instance().formatAmount(index.data(TransactionsModel::ROLE_FEE).value<quint64>())).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_FEE).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_HASH).data().toString().toUtf8()).append("\",");
         res.append("\"").append(index.data(TransactionsModel::ROLE_HEIGHT).toString().toUtf8()).append("\",");
-        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_ADDRESS).data().toString().toUtf8()).append("\",");
-        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_PAYMENT_ID).data().toString().toUtf8()).append("\",");
-        res.append("\"").append(index.data(TransactionsModel::ROLE_SECRET_KEY).toByteArray().toHex().toUpper()).append("\"\n");
+        res.append("\"").append(index.sibling(index.row(), TransactionsModel::COLUMN_ADDRESS).data().toString().toUtf8()).append("\"\n");
       }
     }
 
@@ -162,9 +153,6 @@ void TransactionsFrame::copyAmount(){
   QApplication::clipboard()->setText(index.sibling(index.row(), TransactionsModel::COLUMN_AMOUNT).data().toString());
 }
 
-void TransactionsFrame::copyPaymentID(){
-  QApplication::clipboard()->setText(index.sibling(index.row(), TransactionsModel::COLUMN_PAYMENT_ID).data().toString());
-}
 void TransactionsFrame::showTxDetails(){
   showTransactionDetails(index);
 }
@@ -187,7 +175,7 @@ void TransactionsFrame::computeSelected() {
 }
 
 QString TransactionsFrame::formatAmount(int64_t _amount) const {
-  QString s =CurrencyAdapter::instance().formatAmount(static_cast<uint64_t>(std::abs(_amount)));
+  QString s = CurrencyAdapter::instance().formatAmount(static_cast<uint64_t>(std::abs(_amount)));
     if (_amount < 0) {
       s.insert(0, "-");
     }

@@ -1,11 +1,11 @@
-IDI_ICON1               ICON    "images\karbowanez.ico"
+IDI_ICON1               ICON    "images\discrete.ico"
 
 #include <windows.h>
 #include <CryptoNoteWalletConfig.h>
 
 #define VER_FILEVERSION             1,0,0,0
 #define VER_FILEVERSION_STR         "1.0.0.0\0"
-#define VER_ORIGINALFILENAME_STR    "Karbowanec.exe"
+#define VER_ORIGINALFILENAME_STR    "DiscreteWallet.exe"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION     VER_FILEVERSION

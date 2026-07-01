@@ -1,5 +1,6 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
 // Copyright (c) 2016 The Karbowanec developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,6 +15,9 @@
 #include "NewAddressDialog.h"
 #include "NodeAdapter.h"
 #include "WalletEvents.h"
+#include "AccountNumber.h"
+#include "PqAddress.h"
+#include "Common/StringTools.h"
 
 #include "ui_addressbookframe.h"
 
@@ -38,7 +42,6 @@ AddressBookFrame::AddressBookFrame(QWidget* _parent) : QFrame(_parent), m_ui(new
   contextMenu->addAction(QString(tr("Copy &label")), this, SLOT(copyLabelClicked()));
   contextMenu->addAction(QString(tr("Copy &address")), this, SLOT(copyClicked()));
   contextMenu->addAction(QString(tr("Copy Account &Number")), this, SLOT(copyAccountNumberClicked()));
-  contextMenu->addAction(QString(tr("Copy Payment &ID")), this, SLOT(copyPaymentIdClicked()));
   contextMenu->addAction(QString(tr("&Edit")), this, SLOT(editClicked()));
   contextMenu->addAction(QString(tr("&Delete")), this, SLOT(deleteClicked()));
 }
@@ -58,14 +61,8 @@ void AddressBookFrame::addClicked() {
   if (dlg.exec() == QDialog::Accepted) {
     QString label = dlg.getLabel();
     QString address = dlg.getAddress();
-    QByteArray paymentid = dlg.getPaymentID().toUtf8();
     if (!CurrencyAdapter::instance().validateAddress(address)) {
       QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid address"), QtCriticalMsg));
-      return;
-    }
-
-    if (!isValidPaymentId(paymentid)) {
-      QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid payment ID"), QtCriticalMsg));
       return;
     }
 
@@ -77,18 +74,11 @@ void AddressBookFrame::addClicked() {
       NewAddressDialog dlg(&MainWindow::instance());
       dlg.setEditLabel(label);
       dlg.setEditAddress(address);
-      dlg.setEditPaymentId(paymentid);
       if (dlg.exec() == QDialog::Accepted) {
         QString label = dlg.getLabel();
         QString address = dlg.getAddress();
-        QByteArray paymentid = dlg.getPaymentID().toUtf8();
         if (!CurrencyAdapter::instance().validateAddress(address)) {
           QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid address"), QtCriticalMsg));
-          return;
-        }
-
-        if (!isValidPaymentId(paymentid)) {
-          QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid payment ID"), QtCriticalMsg));
           return;
         }
 
@@ -98,12 +88,12 @@ void AddressBookFrame::addClicked() {
           QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Contact with such label already exists."), QtCriticalMsg));
           return;
         }
-        AddressBookModel::instance().addAddress(label, address, paymentid);
+        AddressBookModel::instance().addAddress(label, address);
       }
       return;
     }
 
-    AddressBookModel::instance().addAddress(label, address, paymentid);
+    AddressBookModel::instance().addAddress(label, address);
   }
 }
 
@@ -112,18 +102,11 @@ void AddressBookFrame::editClicked() {
    dlg.setWindowTitle(QString(tr("Edit contact")));
    dlg.setEditLabel(m_ui->m_addressBookView->currentIndex().data(AddressBookModel::ROLE_LABEL).toString());
    dlg.setEditAddress(m_ui->m_addressBookView->currentIndex().data(AddressBookModel::ROLE_ADDRESS).toString());
-   dlg.setEditPaymentId(m_ui->m_addressBookView->currentIndex().data(AddressBookModel::ROLE_PAYMENTID).toString());
    if (dlg.exec() == QDialog::Accepted) {
      QString label = dlg.getLabel();
      QString address = dlg.getAddress();
-     QByteArray paymentid = dlg.getPaymentID().toUtf8();
      if (!CurrencyAdapter::instance().validateAddress(address)) {
        QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid address"), QtCriticalMsg));
-       return;
-     }
-
-     if (!isValidPaymentId(paymentid)) {
-       QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Invalid payment ID"), QtCriticalMsg));
        return;
      }
 
@@ -134,7 +117,7 @@ void AddressBookFrame::editClicked() {
        return;
      }
 
-     AddressBookModel::instance().addAddress(label, address, paymentid);
+     AddressBookModel::instance().addAddress(label, address);
 
      deleteClicked();
    }
@@ -150,27 +133,30 @@ void AddressBookFrame::copyAccountNumberClicked() {
     return;
   }
 
-  std::string* accountNumber = new std::string();
-  NodeAdapter::instance().getAccountNumber(address.toStdString(), *accountNumber,
-    [this, accountNumber](std::error_code ec) {
-      QString result;
-      if (!ec && !accountNumber->empty()) {
-        result = QString::fromStdString(*accountNumber);
-      }
-      delete accountNumber;
+  CryptoNote::PqAddress addr;
+  if (!CryptoNote::decodePqAddress(address.toStdString(), CurrencyAdapter::instance().isTestnet(), addr)) {
+    QMessageBox::information(this, tr("Account Number"), tr("Not a valid address."));
+    return;
+  }
 
-      QMetaObject::invokeMethod(this, [this, result]() {
-        if (!result.isEmpty()) {
-          QApplication::clipboard()->setText(result);
+  const std::string viewPubHex = Common::toHex(addr.viewPub.data(), addr.viewPub.size());
+  const std::string spendPubHex = Common::toHex(addr.spendPub.data(), addr.spendPub.size());
+
+  auto registered = std::make_shared<bool>(false);
+  auto blockHeight = std::make_shared<uint32_t>(0);
+  auto txIndex = std::make_shared<uint32_t>(0);
+
+  NodeAdapter::instance().getPqAccount(viewPubHex, spendPubHex, *registered, *blockHeight, *txIndex,
+    [this, registered, blockHeight, txIndex](std::error_code ec) {
+      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex]() {
+        if (!ec && *registered) {
+          CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
+          QApplication::clipboard()->setText(QString::fromStdString(acct.toString()));
         } else {
           QMessageBox::information(this, tr("Account Number"), tr("No account number registered for this address."));
         }
       }, Qt::QueuedConnection);
     });
-}
-
-void AddressBookFrame::copyPaymentIdClicked() {
-  QApplication::clipboard()->setText(m_ui->m_addressBookView->currentIndex().data(AddressBookModel::ROLE_PAYMENTID).toString());
 }
 
 void AddressBookFrame::copyLabelClicked() {
@@ -180,7 +166,6 @@ void AddressBookFrame::copyLabelClicked() {
 void AddressBookFrame::deleteClicked() {
   int row = m_ui->m_addressBookView->currentIndex().row();
   AddressBookModel::instance().removeAddress(row);
-  m_ui->m_copyPaymentIdButton->setEnabled(false);
   currentAddressChanged(m_ui->m_addressBookView->currentIndex());
 }
 
@@ -200,16 +185,6 @@ void AddressBookFrame::currentAddressChanged(const QModelIndex& _index) {
   m_ui->m_copyAddressButton->setEnabled(_index.isValid());
   m_ui->m_deleteAddressButton->setEnabled(_index.isValid());
   m_ui->m_editAddressButton->setEnabled(_index.isValid());
-  m_ui->m_copyPaymentIdButton->setEnabled(!_index.data(AddressBookModel::ROLE_PAYMENTID).toString().isEmpty());
-}
-
-bool AddressBookFrame::isValidPaymentId(const QByteArray& _paymentIdString) {
-  if (_paymentIdString.isEmpty()) {
-    return true;
-  }
-
-  QByteArray paymentId = QByteArray::fromHex(_paymentIdString);
-  return (paymentId.size() == sizeof(Crypto::Hash)) && (_paymentIdString.toUpper() == paymentId.toHex().toUpper());
 }
 
 }

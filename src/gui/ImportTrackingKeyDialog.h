@@ -8,6 +8,7 @@
 
 #include <QDialog>
 #include <CryptoNote.h>
+#include "Wallet/PqWallet.h"
 
 namespace Ui {
 class ImportTrackingKeyDialog;
@@ -26,11 +27,13 @@ public:
   QString getFilePath() const;
   quint32 getSyncHeight() const;
   CryptoNote::AccountKeys getAccountKeys() const;
+  CryptoNote::PqTrackingKeys getTrackingKeys() const;
 
 private:
   QScopedPointer<Ui::ImportTrackingKeyDialog> m_ui;
 
   CryptoNote::AccountKeys m_keys;
+  CryptoNote::PqTrackingKeys m_trackingKeys;
 
   Q_SLOT void selectPathClicked();
   Q_SLOT void onTextChanged();

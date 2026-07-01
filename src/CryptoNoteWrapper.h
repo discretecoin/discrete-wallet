@@ -1,5 +1,6 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
 // Copyright (c) 2016-2022 The Karbowanec developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -13,6 +14,8 @@
 #include <Logging/LoggerRef.h>
 #include <Rpc/RpcServerConfig.h>
 #include <System/Dispatcher.h>
+#include <crypto_pq/PqKem.h>
+#include <crypto_pq/PqDsa.h>
 
 namespace CryptoNote {
 
@@ -40,9 +43,7 @@ public:
   virtual ~Node() = 0;
   virtual void init(const std::function<void(std::error_code)>& callback) = 0;
   virtual void deinit() = 0;
-  
-  virtual std::string convertPaymentId(const std::string& paymentIdString) = 0;
-  virtual std::string extractPaymentId(const std::string& extra) = 0;
+
   virtual uint64_t getLastKnownBlockHeight() const = 0;
   virtual uint64_t getLastLocalBlockHeight() const = 0;
   virtual uint64_t getLastLocalBlockTimestamp() const = 0;
@@ -58,15 +59,22 @@ public:
   virtual uint64_t getWhitePeerlistSize() = 0;
   virtual uint64_t getGreyPeerlistSize() = 0;
   virtual uint64_t getMinimalFee() = 0;
-  virtual std::string feeAddress() const = 0;
-  virtual uint64_t feeAmount() const = 0;
   virtual uint8_t getCurrentBlockMajorVersion() = 0;
   virtual uint64_t getAlreadyGeneratedCoins() = 0;
   virtual CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo() = 0;
   virtual std::vector<CryptoNote::p2pConnection> getConnections() = 0;
-  virtual bool getBlockTemplate(CryptoNote::Block& b, const CryptoNote::AccountKeys& acc, const CryptoNote::BinaryArray& ex_nonce, CryptoNote::difficulty_type& diffic, uint32_t& height) = 0;
-  virtual bool handleBlockFound(CryptoNote::Block& b) = 0;
-  virtual bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& block, Crypto::Hash& res) = 0;
+
+  // Built-in (in-process) mining. Only the in-process node can mine: it shares
+  // the GUI's address space, so it can hold the wallet's derived ML-DSA spend
+  // secret in memory for the lifetime of the mining session and sign each
+  // candidate block itself (mining is identity-bound — the coinbase reward is
+  // only spendable by the same key that signed the block). An RPC-connected
+  // remote node has no such access and reports mining as unsupported.
+  virtual bool startMining(const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub,
+                           const CryptoPQ::DsaSecretKey& spendSk, size_t threadCount) = 0;
+  virtual bool stopMining() = 0;
+  virtual bool isMining() = 0;
+  virtual uint64_t getHashRate() = 0;
 
   virtual NodeType getNodeType() const = 0;
 
@@ -75,8 +83,14 @@ public:
   virtual CryptoNote::INode* getNode() = 0;
   virtual System::Dispatcher& getDispatcher() = 0;
 
-  virtual void getAccountNumber(const std::string& address, std::string& accountNumber, const std::function<void(std::error_code)>& callback) = 0;
-  virtual void resolveAccountNumber(const std::string& accountNumber, std::string& address, const std::function<void(std::error_code)>& callback) = 0;
+  // PQ account-number registry (see include/AccountNumber.h and
+  // src/Wallet/PqRecipient.h). getPqAccount: a full PQ identity (view+spend
+  // public keys, hex) -> its on-chain registration coordinates, if registered.
+  // resolvePqAccount: coordinates -> the registered view+spend public keys.
+  virtual void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                            uint32_t& blockHeight, uint32_t& txIndex, const std::function<void(std::error_code)>& callback) = 0;
+  virtual void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                                std::string& viewPubHex, std::string& spendPubHex, const std::function<void(std::error_code)>& callback) = 0;
 
 };
 

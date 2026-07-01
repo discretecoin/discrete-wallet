@@ -49,6 +49,16 @@ QPixmap getTransactionIcon(TransactionType _transactionType, const QSize& _size)
   return QPixmap();
 }
 
+// Full PQ addresses are ~5000 characters — unreadable, and unusable, as a
+// table cell. ROLE_ADDRESS (and the "me (...)"/contact text this feeds into)
+// still carries the full address for anything that needs the real value.
+QString elideAddress(const QString& _address) {
+  if (_address.size() <= 36) {
+    return _address;
+  }
+  return _address.left(20) + QStringLiteral("…") + _address.right(12);
+}
+
 }
 
 TransactionsModel& TransactionsModel::instance() {
@@ -102,16 +112,12 @@ QVariant TransactionsModel::headerData(int _section, Qt::Orientation _orientatio
       return tr("Type");
     case COLUMN_HASH:
       return tr("Hash");
-    case COLUMN_SECRET_KEY:
-      return tr("Key");
     case COLUMN_ADDRESS:
       return tr("Address");
     case COLUMN_AMOUNT:
       return tr("Amount");
     case COLUMN_FEE:
       return tr("Fee");
-    case COLUMN_PAYMENT_ID:
-      return tr("PaymentID");
     default:
       break;
     }
@@ -183,7 +189,7 @@ QModelIndex TransactionsModel::parent(const QModelIndex& _index) const {
 
 QByteArray TransactionsModel::toCsv() const {
   QByteArray res;
-  res.append("\"Date\",\"Amount\",\"Fee\",\"Hash\",\"Height\",\"Address\",\"Payment ID\",\"Key\"\n");
+  res.append("\"Date\",\"Amount\",\"Fee\",\"Hash\",\"Height\",\"Address\"\n");
   for (quint32 row = 0; row < rowCount(); ++row) {
     QModelIndex ind = index(row, 0);
     res.append("\"").append(ind.sibling(row, COLUMN_DATE).data().toString().toUtf8()).append("\",");
@@ -191,9 +197,7 @@ QByteArray TransactionsModel::toCsv() const {
     res.append("\"").append(ind.sibling(row, COLUMN_FEE).data().toString().toUtf8()).append("\",");
     res.append("\"").append(ind.sibling(row, COLUMN_HASH).data().toString().toUtf8()).append("\",");
     res.append("\"").append(ind.sibling(row, COLUMN_HEIGHT).data().toString().toUtf8()).append("\",");
-    res.append("\"").append(ind.sibling(row, COLUMN_ADDRESS).data().toString().toUtf8()).append("\",");
-    res.append("\"").append(ind.sibling(row, COLUMN_PAYMENT_ID).data().toString().toUtf8()).append("\",");
-    res.append("\"").append(ind.sibling(row, COLUMN_SECRET_KEY).data().toString().toUtf8()).append("\"\n");
+    res.append("\"").append(ind.sibling(row, COLUMN_ADDRESS).data().toString().toUtf8()).append("\"\n");
   }
 
   return res;
@@ -209,15 +213,12 @@ QVariant TransactionsModel::getDisplayRole(const QModelIndex& _index) const {
   case COLUMN_HASH:
     return _index.data(ROLE_HASH).toByteArray().toHex().toUpper();
 
-  case COLUMN_SECRET_KEY:
-    return _index.data(ROLE_SECRET_KEY).toByteArray().toHex().toUpper();
-
   case COLUMN_ADDRESS: {
     TransactionType transactionType = static_cast<TransactionType>(_index.data(ROLE_TYPE).value<quint8>());
     QString transactionAddress = _index.data(ROLE_ADDRESS).toString();
     if (transactionType == TransactionType::INPUT || transactionType == TransactionType::MINED ||
         transactionType == TransactionType::INOUT) {
-      return QString(tr("me (%1)").arg(WalletAdapter::instance().getAddress()));
+      return QString(tr("me (%1)").arg(elideAddress(WalletAdapter::instance().getAddress())));
     } else if (transactionAddress.isEmpty()) {
       return tr("(n/a)");
     }
@@ -225,9 +226,9 @@ QVariant TransactionsModel::getDisplayRole(const QModelIndex& _index) const {
     QModelIndex contactIndex = AddressBookModel::instance().indexFromContact(transactionAddress,1);
     QString Contact = contactIndex.data(AddressBookModel::ROLE_LABEL).toString();
     if(!Contact.isEmpty())
-      return QString("%1 (%2)").arg(Contact, transactionAddress);
+      return QString("%1 (%2)").arg(Contact, elideAddress(transactionAddress));
 
-    return transactionAddress;
+    return elideAddress(transactionAddress);
   }
 
   case COLUMN_AMOUNT: {
@@ -235,9 +236,6 @@ QVariant TransactionsModel::getDisplayRole(const QModelIndex& _index) const {
     QString amountStr = CurrencyAdapter::instance().formatAmount(qAbs(amount)).remove(',');
     return (amount < 0 ? "-" + amountStr : amountStr);
   }
-
-  case COLUMN_PAYMENT_ID:
-    return _index.data(ROLE_PAYMENT_ID);
 
   case COLUMN_FEE: {
     qint64 fee = _index.data(ROLE_FEE).value<qint64>();
@@ -270,9 +268,6 @@ QVariant TransactionsModel::getEditRole(const QModelIndex& _index) const {
   case COLUMN_HASH:
     return _index.data(ROLE_HASH).toByteArray().toHex().toUpper();
 
-  case COLUMN_SECRET_KEY:
-    return _index.data(ROLE_SECRET_KEY).toByteArray().toHex().toUpper();
-
   case COLUMN_ADDRESS: {
     TransactionType transactionType = static_cast<TransactionType>(_index.data(ROLE_TYPE).value<quint8>());
     QString transactionAddress = _index.data(ROLE_ADDRESS).toString();
@@ -294,9 +289,6 @@ QVariant TransactionsModel::getEditRole(const QModelIndex& _index) const {
     }
     return (amountStr.toDouble());
   }
-
-  case COLUMN_PAYMENT_ID:
-    return _index.data(ROLE_PAYMENT_ID);
 
   case COLUMN_FEE: {
     qint64 fee = _index.data(ROLE_FEE).value<qint64>();
@@ -407,23 +399,11 @@ QVariant TransactionsModel::getUserRole(const QModelIndex& _index, int _role, Cr
   case ROLE_HASH:
     return QByteArray(reinterpret_cast<char*>(&_transaction.hash), sizeof(_transaction.hash));
 
-  case ROLE_SECRET_KEY: {
-    if (_transaction.secretKey) {
-      Crypto::SecretKey txkey = _transaction.secretKey.get();
-      if (txkey != CryptoNote::NULL_SECRET_KEY) {
-        return QByteArray(reinterpret_cast<char*>(&txkey), sizeof(txkey));
-      }
-    }
-  }
-
   case ROLE_ADDRESS:
     return QString::fromStdString(_transfer.address);
 
   case ROLE_AMOUNT:
     return static_cast<qint64>(_transferId == CryptoNote::WALLET_LEGACY_INVALID_TRANSFER_ID ? _transaction.totalAmount : -_transfer.amount);
-
-  case ROLE_PAYMENT_ID:
-    return NodeAdapter::instance().extractPaymentId(_transaction.extra);
 
   case ROLE_ICON: {
     TransactionType transactionType = static_cast<TransactionType>(_index.data(ROLE_TYPE).value<quint8>());

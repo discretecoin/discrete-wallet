@@ -1,10 +1,13 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
 // Copyright (c) 2016-2018 The Karbowanec developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <crypto/crypto.h>
 #include <Common/StringTools.h>
+#include "AccountNumber.h"
+#include "PqAddress.h"
 #include "CurrencyAdapter.h"
 #include "CryptoNoteWalletConfig.h"
 #include "LoggerAdapter.h"
@@ -39,15 +42,19 @@ QString CurrencyAdapter::getCurrencyName() const {
 }
 
 QString CurrencyAdapter::getCurrencyTicker() const {
-  return WALLET_CURRENCY_TICKER;
+  return CryptoNote::CRYPTONOTE_TICKER;
 }
 
 quint64 CurrencyAdapter::getMinimumFee() const {
   return m_currency.minimumFee();
 }
 
-quint64 CurrencyAdapter::getAddressPrefix() const {
+quint64 CurrencyAdapter::getNetworkPrefix() const {
   return m_currency.publicAddressBase58Prefix();
+}
+
+bool CurrencyAdapter::isTestnet() const {
+  return m_currency.isTestnet();
 }
 
 QString CurrencyAdapter::formatAmount(quint64 _amount) const {
@@ -66,12 +73,6 @@ QString CurrencyAdapter::formatAmount(quint64 _amount) const {
   }
 
   result.insert(dot_pos, ".");
-  for (qint32 pos = dot_pos - 3; pos > 0; pos -= 3) {
-    if (result[pos - 1].isDigit()) {
-        //result.insert(pos, ',');
-    }
-  }
-
   return result;
 }
 
@@ -109,22 +110,20 @@ quint64 CurrencyAdapter::parseAmount(const QString& _amountString) const {
 }
 
 bool CurrencyAdapter::validateAddress(const QString& _address) const {
-  CryptoNote::AccountPublicAddress internalAddress;
-  return m_currency.parseAccountAddressString(_address.toStdString(), internalAddress);
-}
-
-CryptoNote::AccountPublicAddress CurrencyAdapter::internalAddress(const QString& _address) const {
-  CryptoNote::AccountPublicAddress internalAddress;
-  if(!m_currency.parseAccountAddressString(_address.toStdString(), internalAddress)) {
-    // Error message
+  std::string s = _address.trimmed().toStdString();
+  if (s.empty()) {
+    return false;
   }
-  return internalAddress;
-}
 
-QString CurrencyAdapter::generatePaymentId() const {
-  Crypto::Hash payment_id;
-  Random::randomBytes(32, payment_id.data);
-  return QString::fromStdString(Common::podToHex(payment_id));
+  CryptoNote::PqAddress addr;
+  if (CryptoNote::decodePqAddress(s, m_currency.isTestnet(), addr)) {
+    return true;
+  }
+
+  CryptoNote::AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  return CryptoNote::AccountNumber::fromStringWithIndex(s, acct, subaddrIndex) ||
+         CryptoNote::AccountNumber::fromString(s, acct);
 }
 
 }

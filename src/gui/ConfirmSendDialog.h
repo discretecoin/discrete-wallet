@@ -20,8 +20,6 @@ public:
   ~ConfirmSendDialog();
 
   void showPasymentDetails(quint64 _total);
-  void showPaymentId(QString _paymentid);
-  void confirmNoPaymentId();
 
 private:
   QScopedPointer<Ui::ConfirmSendDialog> m_ui;

@@ -14,6 +14,9 @@
 #include "CurrencyAdapter.h"
 #include "NodeAdapter.h"
 #include "DnsLookup.h"
+#include "AccountNumber.h"
+#include "PqAddress.h"
+#include "Common/StringTools.h"
 
 #include "ui_transferframe.h"
 
@@ -61,7 +64,6 @@ void TransferFrame::addressBookClicked() {
   AddressBookDialog dlg(&MainWindow::instance());
   if(dlg.exec() == QDialog::Accepted) {
     m_ui->m_addressEdit->setText(dlg.getAddress());
-    Q_EMIT insertPaymentIDSignal(dlg.getPaymentID());
   }
 }
 
@@ -114,32 +116,44 @@ void TransferFrame::amountValueChange() {
 }
 
 bool TransferFrame::looksLikeAccountNumber(const QString& _text) {
-  static QRegularExpression re("^\\d+-\\d+-[0-9A-Za-z]$");
+  // H-I-C (base account) or H-I-T-C (deposit subaddress).
+  static QRegularExpression re("^\\d+-\\d+(-\\d+)?-[0-9A-Za-z]$");
   return re.match(_text).hasMatch();
 }
 
 void TransferFrame::resolveAccountNumber(const QString& _input) {
-  std::string* accountNumber = new std::string(_input.toStdString());
-  std::string* address = new std::string();
+  CryptoNote::AccountNumber acct;
+  uint32_t subaddrIndex = 0;
+  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(_input.toStdString(), acct, subaddrIndex);
+  if (!isHitc && !CryptoNote::AccountNumber::fromString(_input.toStdString(), acct)) {
+    m_ui->m_addressStatusLabel->setText(tr("Invalid account number"));
+    m_ui->m_addressStatusLabel->show();
+    return;
+  }
 
-  NodeAdapter::instance().resolveAccountNumber(*accountNumber, *address,
-    [this, _input, accountNumber, address](std::error_code ec) {
-      const QString resolvedAddress = (!ec && !address->empty())
-          ? QString::fromStdString(*address) : QString();
-      delete accountNumber;
-      delete address;
+  auto found = std::make_shared<bool>(false);
+  auto viewPubHex = std::make_shared<std::string>();
+  auto spendPubHex = std::make_shared<std::string>();
 
-      QMetaObject::invokeMethod(this, [this, _input, resolvedAddress, ec]() {
-        if (!resolvedAddress.isEmpty()) {
-          m_ui->m_addressEdit->setText(QString("%1 <%2>").arg(_input).arg(resolvedAddress));
-          m_ui->m_addressStatusLabel->hide();
-        } else if (ec == std::errc::no_such_file_or_directory) {
-          m_ui->m_addressStatusLabel->setText(tr("Account number not found"));
-          m_ui->m_addressStatusLabel->show();
-        } else if (ec == std::errc::invalid_argument) {
-          m_ui->m_addressStatusLabel->setText(tr("Invalid account number"));
-          m_ui->m_addressStatusLabel->show();
+  NodeAdapter::instance().resolvePqAccount(acct.blockHeight, acct.txIndex, *found, *viewPubHex, *spendPubHex,
+    [this, _input, found, viewPubHex, spendPubHex](std::error_code ec) {
+      QMetaObject::invokeMethod(this, [this, _input, ec, found, viewPubHex, spendPubHex]() {
+        if (!ec && *found) {
+          CryptoPQ::KemPublicKey viewPub;
+          CryptoPQ::DsaPublicKey spendPub;
+          size_t sz = 0;
+          if (Common::fromHex(*viewPubHex, viewPub.data(), viewPub.size(), sz) && sz == viewPub.size() &&
+              Common::fromHex(*spendPubHex, spendPub.data(), spendPub.size(), sz) && sz == spendPub.size()) {
+            CryptoNote::PqAddress addr = CryptoNote::makePqAddress(CurrencyAdapter::instance().getNetworkPrefix(), viewPub, spendPub);
+            const std::string hrp = CryptoNote::pqBech32Hrp(CurrencyAdapter::instance().isTestnet());
+            const QString resolvedAddress = QString::fromStdString(CryptoNote::encodePqAddress(addr, hrp));
+            m_ui->m_addressEdit->setText(QString("%1 <%2>").arg(_input).arg(resolvedAddress));
+            m_ui->m_addressStatusLabel->hide();
+            return;
+          }
         }
+        m_ui->m_addressStatusLabel->setText(tr("Account number not found"));
+        m_ui->m_addressStatusLabel->show();
       }, Qt::QueuedConnection);
     });
 }

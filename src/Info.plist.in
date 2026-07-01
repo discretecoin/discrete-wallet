@@ -7,17 +7,17 @@
 	<key>CFBundleExecutable</key>
 	<string>@WALLET_NAME@</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Karbo Wallet v. @WALLET_VERSION@</string>
+	<string>Discrete Wallet v. @WALLET_VERSION@</string>
 	<key>CFBundleIconFile</key>
-	<string>karbowanec.icns</string>
+	<string>discrete.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.karbowanec.Karbowanec-Qt</string>
+	<string>cash.discrete.Discrete-Qt</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleLongVersionString</key>
 	<string>@WALLET_VERSION@</string>
 	<key>CFBundleName</key>
-	<string>Karbo Wallet</string>
+	<string>Discrete Wallet</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -25,11 +25,11 @@
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>karbowanec@WALLET_VERSION@</string>
+	<string>discrete@WALLET_VERSION@</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright (c) 2016-2020 The Karbo Developers</string>
+	<string>Copyright (c) 2026 The Discrete Developers</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSHighResolutionCapable</key>
@@ -46,10 +46,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.karbowanec.KarbowanecPayment</string>
+			<string>cash.discrete.DiscretePayment</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>karbowanec</string>
+				<string>discrete</string>
 			</array>
 		</dict>
 	</array>

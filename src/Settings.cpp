@@ -38,11 +38,12 @@ const char OPTION_WALLET_RPC_BIND_PORT[] = "walletRpcBindPort";
 const char OPTION_WALLET_RPC_USER[] = "walletRpcUser";
 const char OPTION_WALLET_RPC_PASSWORD[] = "walletRpcPassword";
 
+// Empty rather than guessed: Discrete is pre-launch and has no public seed
+// node infrastructure yet (see docs/DISCRETE-COMPLETION-PLAN.md). These were
+// Karbo's actual production hostnames — pointing a Discrete wallet at them
+// would connect to the wrong network entirely. Populate once real Discrete
+// seed nodes exist; until then, users pick "embedded" or configure their own.
 const QVector<NodeSetting> DEFAULT_NODES_LIST = {
-  {"node.karbo.io", 32348, "/", false},
-  {"node.karbo.org", 32348, "/", false},
-  {"node.karbowanec.com", 32348, "/", false},
-  {"free.rublin.org", 32348, "/", false}
 };
 
 Settings& Settings::instance() {

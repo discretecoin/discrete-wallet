@@ -1,5 +1,6 @@
 // Copyright (c) 2011-2015 The Cryptonote developers
 // Copyright (c) 2016 The Karbowanec developers
+// Copyright (c) 2026 The Discrete developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -23,11 +24,9 @@ public:
 
   QString getAddress() const;
   QString getLabel() const;
-  QString getPaymentID() const;
 
   void setEditLabel(QString label);
   void setEditAddress(QString address);
-  void setEditPaymentId(QString paymentid);
 
 private:
   QScopedPointer<Ui::NewAddressDialog> m_ui;

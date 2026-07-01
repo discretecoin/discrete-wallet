@@ -76,7 +76,6 @@ private:
   double m_lastAnnouncedPeakHashRate = 0;
   double m_lastHashRate = 0;
   double m_currentDifficulty = 0;
-  quint64 m_sessionBlocksFound = 0;
 
   void applyChartPalette();
   void initDifficultyChart();
@@ -85,7 +84,6 @@ private:
   void plotDifficulty();
   void addHashRateEventMarker(bool _highlight);
   void appendMiningEvent(const QString& _kind, const QString& _message);
-  void showBlockFound(quint64 _height);
   void appendRawLogLine(const QString& _line);
   void resetSessionStats();
   void updateSessionStats();
@@ -114,7 +112,6 @@ private:
   Q_SLOT void onMinerStopped(quint32 _threads);
   Q_SLOT void onMinerThreadsChanged(quint32 _threads);
   Q_SLOT void onMinerTemplateUpdated(quint64 _height, quint64 _difficulty);
-  Q_SLOT void onBlockFound(const QString& _hash, quint64 _height, quint64 _difficulty, const QString& _pow);
   Q_SLOT void onMinerError(const QString& _message);
   Q_SLOT void coreDealTurned(int _cores);
   Q_SLOT void poolChanged();

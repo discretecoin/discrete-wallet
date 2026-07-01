@@ -1,7 +1,7 @@
 
-set(WALLET_NAME "KarbowanecWallet")
-set(CN_CURRENCY_DISPLAY_NAME "Karbo")
-set(CN_CURRENCY_TICKER "KRB")
+set(WALLET_NAME "DiscreteWallet")
+set(CN_CURRENCY_DISPLAY_NAME "Discrete")
+set(CN_CURRENCY_TICKER "XDS")
 
 # Get version number from git tag, parse it and split into separate components
 find_package(Git)
@@ -39,8 +39,8 @@ endif()
 
 set(WALLET_VER_BUILD 1) # this one was always 1 anyways
 
-set(WALLET_VENDOR_NAME "Karbo Developers")
-set(WALLET_COPYRIGHT "Copyright 2016-2020 ${PROJECT_VENDOR_NAME}")
-set(WALLET_VENDOR_URL "https://karbo.org")
+set(WALLET_VENDOR_NAME "Discrete Developers")
+set(WALLET_COPYRIGHT "Copyright 2026 ${WALLET_VENDOR_NAME}")
+set(WALLET_VENDOR_URL "https://discrete.cash")
 
 set(WALLET_VERSION "${WALLET_VER_MAJOR}.${WALLET_VER_MINOR}.${WALLET_VER_PATCH}")

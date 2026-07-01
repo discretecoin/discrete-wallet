@@ -40,19 +40,6 @@
      </property>
     </widget>
    </item>
-   <item row="2" column="0">
-    <widget class="QLabel" name="label_3">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>PaymentID:</string>
-     </property>
-    </widget>
-   </item>
    <item row="3" column="0" colspan="2">
     <spacer name="horizontalSpacer">
      <property name="orientation">
@@ -86,13 +73,6 @@
      </property>
     </widget>
    </item>
-   <item row="2" column="1" colspan="3">
-    <widget class="QLineEdit" name="m_contactPaymentIdEdit">
-     <property name="echoMode">
-      <enum>QLineEdit::Normal</enum>
-     </property>
-    </widget>
-   </item>
    <item row="1" column="1" colspan="3">
     <widget class="QLineEdit" name="m_addressEdit">
      <property name="echoMode">
@@ -118,7 +98,6 @@
  <tabstops>
   <tabstop>m_labelEdit</tabstop>
   <tabstop>m_addressEdit</tabstop>
-  <tabstop>m_contactPaymentIdEdit</tabstop>
   <tabstop>m_okButton</tabstop>
   <tabstop>m_cancelButton</tabstop>
  </tabstops>

@@ -96,21 +96,6 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="m_copyPaymentIdButton">
-       <property name="enabled">
-        <bool>false</bool>
-       </property>
-       <property name="text">
-        <string>Copy Payment ID</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../resources.qrc">
-         <normaloff>:/icons/copy_white</normaloff>
-         <selectedoff>:/icons/copy_white</selectedoff>:/icons/copy_white</iconset>
-       </property>
-      </widget>
-     </item>
-     <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
@@ -196,22 +181,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_copyPaymentIdButton</sender>
-   <signal>clicked()</signal>
-   <receiver>AddressBookFrame</receiver>
-   <slot>copyPaymentIdClicked()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>455</x>
-     <y>561</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>436</x>
-     <y>292</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_addressBookView</sender>
    <signal>doubleClicked(QModelIndex)</signal>
    <receiver>AddressBookFrame</receiver>
@@ -233,7 +202,6 @@
   <slot>deleteClicked()</slot>
   <slot>copyClicked()</slot>
   <slot>editClicked()</slot>
-  <slot>copyPaymentIdClicked()</slot>
   <slot>addressDoubleClicked(QModelIndex)</slot>
  </slots>
 </ui>

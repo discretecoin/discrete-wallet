@@ -7,12 +7,11 @@
 #include <QClipboard>
 #include <QFileDialog>
 #include <QTextStream>
-#include <Common/Base58.h>
 #include <Common/StringTools.h>
 #include "CurrencyAdapter.h"
 #include "WalletAdapter.h"
 #include "MainWindow.h"
-#include <boost/utility/value_init.hpp>
+#include "Wallet/PqWallet.h"
 
 namespace WalletGui {
 
@@ -29,21 +28,12 @@ void ExportTrackingKeyDialog::walletOpened() {
   CryptoNote::AccountKeys keys;
   WalletAdapter::instance().getAccountKeys(keys);
 
-  keys.spendSecretKey = boost::value_initialized<Crypto::SecretKey>();
+  CryptoNote::PqWalletKeys walletKeys = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+  CryptoNote::PqTrackingKeys trackingKeys = CryptoNote::pqTrackingKeys(walletKeys);
 
-  // XDN paperwallet style key
-  // trackingWalletKeys = QString::fromStdString(Tools::Base58::encode_addr(CurrencyAdapter::instance().getAddressPrefix(),
-  //                     std::string(reinterpret_cast<char*>(&keys), sizeof(keys))));
-
-  // Simplewallet-compatible tracking key format:
-  // spendPublicKey(32) | viewPublicKey(32) | viewSecretKey(32) = 192 hex chars
-  trackingWalletKeys = QString::fromStdString(
-    Common::podToHex(keys.address.spendPublicKey) +
-    Common::podToHex(keys.address.viewPublicKey) +
-    Common::podToHex(keys.viewSecretKey));
+  trackingWalletKeys = QString::fromStdString(CryptoNote::encodePqTrackingKey(trackingKeys));
 
   m_ui->m_trackingKeyEdit->setText(trackingWalletKeys);
-//m_ui->m_qrLabel->showQRCode(trackingWalletKeys);
 }
 
 void ExportTrackingKeyDialog::walletClosed() {

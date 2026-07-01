@@ -34,14 +34,12 @@
 #include "WalletRpcSettings.h"
 #include "PrivateKeysDialog.h"
 #include "ImportKeyDialog.h"
-#include "ImportKeysDialog.h"
 #include "ExportTrackingKeyDialog.h"
 #include "ImportTrackingKeyDialog.h"
 #include "RestoreFromMnemonicSeedDialog.h"
 #include "SignMessageDialog.h"
 #include "CurrencyAdapter.h"
 #include "ExitWidget.h"
-#include "GetBalanceProofDialog.h"
 #include "NewPasswordDialog.h"
 #include "NodeAdapter.h"
 #include "PasswordDialog.h"
@@ -54,7 +52,6 @@
 #include "MnemonicSeedDialog.h"
 #include "ConfirmSendDialog.h"
 #include "TranslatorManager.h"
-#include "CoinsFrame.h"
 
 #ifdef Q_OS_MAC
 #include "macdockiconhandler.h"
@@ -129,11 +126,10 @@ void MainWindow::connectToSignals() {
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::openWalletClickedSignal, this, &MainWindow::openWallet, Qt::QueuedConnection);
   connect(m_ui->m_addressBookFrame, &AddressBookFrame::payToSignal, this, &MainWindow::payTo);
   connect(m_connectionStateIconLabel, SIGNAL(clicked()), this, SLOT(showStatusInfo()));
-  connect(m_ui->m_coinsFrame, &CoinsFrame::sendOutputsSignal, this, &MainWindow::onSendOutputs, Qt::QueuedConnection);
 }
 
 void MainWindow::setMainWindowTitle() {
-  setWindowTitle(QString(tr("Karbo Wallet %1")).arg(Settings::instance().getVersion()));
+  setWindowTitle(QString(tr("Discrete Wallet %1")).arg(Settings::instance().getVersion()));
 }
 
 void MainWindow::initUi() {
@@ -163,14 +159,12 @@ void MainWindow::initUi() {
   m_ui->m_transactionsFrame->hide();
   m_ui->m_addressBookFrame->hide();
   m_ui->m_miningFrame->hide();
-  m_ui->m_coinsFrame->hide();
 
   m_tabActionGroup->addAction(m_ui->m_transactionsAction);
   m_tabActionGroup->addAction(m_ui->m_sendAction);
   m_tabActionGroup->addAction(m_ui->m_receiveAction);
   m_tabActionGroup->addAction(m_ui->m_addressBookAction);
   m_tabActionGroup->addAction(m_ui->m_miningAction);
-  m_tabActionGroup->addAction(m_ui->m_coinsAction);
 
   // Add spacing between icon and text in toolbar buttons
   for (auto* action : m_ui->toolBar->actions()) {
@@ -220,7 +214,7 @@ void MainWindow::initUi() {
   m_remoteModeIconLabel->hide();
   m_trackingModeIconLabel->hide();
   m_trackingModeIconLabel->setToolTip(tr("Tracking wallet. Spending unavailable"));
-  m_remoteModeIconLabel->setToolTip(tr("Wallet is connected through remote node. Additional fee may be applied."));
+  m_remoteModeIconLabel->setToolTip(tr("Wallet is connected through a remote node."));
 
   QString connection = Settings::instance().getConnection();
   if(connection.compare("remote") == 0) {
@@ -366,20 +360,24 @@ void MainWindow::applyToolBarPalette() {
   const QColor darkerColor = windowColor.darker(135);
   const QColor lighterColor = windowColor.lighter(125);
   const QColor accentColor = palette().color(QPalette::Highlight);
+  const QColor textColor = palette().color(QPalette::WindowText);
 
   m_ui->toolBar->setContentsMargins(0, 0, 0, 0);
   m_ui->toolBar->layout()->setContentsMargins(0, 0, 0, 0);
   m_ui->toolBar->layout()->setSpacing(0);
+  // Once a stylesheet touches a QToolButton at all, be explicit about text
+  // color too — otherwise it can resolve against a stale/default palette
+  // instead of the current theme and render unreadably dim.
   m_ui->toolBar->setStyleSheet(
     QString(
       "QToolBar#toolBar { background-color: %1; border: none; spacing: 0px; padding: 0px; }"
-      "QToolBar#toolBar QToolButton { background-color: %1; border: none; border-radius: 0px;"
+      "QToolBar#toolBar QToolButton { background-color: %1; color: %5; border: none; border-radius: 0px;"
       "  padding: 6px 14px; margin: 0px; min-height: 36px; }"
-      "QToolBar#toolBar QToolButton:hover { background-color: %4; }"
-      "QToolBar#toolBar QToolButton:checked { background-color: %2;"
+      "QToolBar#toolBar QToolButton:hover { background-color: %4; color: %5; }"
+      "QToolBar#toolBar QToolButton:checked { background-color: %2; color: %5;"
       "  border-top: 2px solid %3; }"
     )
-    .arg(darkerColor.name(), windowColor.name(), accentColor.name(), lighterColor.name()));
+    .arg(darkerColor.name(), windowColor.name(), accentColor.name(), lighterColor.name(), textColor.name()));
 }
 
 bool MainWindow::event(QEvent* _event) {
@@ -421,35 +419,6 @@ void MainWindow::createWallet() {
 
       WalletAdapter::instance().setWalletFile(filePath);
       WalletAdapter::instance().createWallet();
-    }
-}
-
-void MainWindow::createNonDeterministicWallet() {
-  QString filePath = QFileDialog::getSaveFileName(this, tr("New wallet file"),
-  #ifdef Q_OS_WIN
-      //QApplication::applicationDirPath(),
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
-  #else
-      QDir::homePath(),
-  #endif
-      tr("Wallets (*.wallet)")
-      );
-
-    if (!filePath.isEmpty() && !filePath.endsWith(".wallet")) {
-      filePath.append(".wallet");
-    }
-
-    if (QFile::exists(filePath)) {
-        QFile::remove(filePath);
-    }
-
-    if (!filePath.isEmpty()) {
-      if (WalletAdapter::instance().isOpen()) {
-        closeWallet();
-      }
-
-      WalletAdapter::instance().setWalletFile(filePath);
-      WalletAdapter::instance().createNonDeterministic();
     }
 }
 
@@ -530,34 +499,6 @@ void MainWindow::importKey() {
   }
 }
 
-void MainWindow::importKeys() {
-  ImportKeysDialog dlg(this);
-  if (dlg.exec() == QDialog::Accepted) {
-    QString filePath = dlg.getFilePath();
-    if (filePath.isEmpty()) {
-      return;
-    }
-
-    if (!filePath.endsWith(".wallet")) {
-      filePath.append(".wallet");
-    }
-
-    CryptoNote::AccountKeys keys = dlg.getAccountKeys();
-
-    if (WalletAdapter::instance().isOpen()) {
-        closeWallet();
-    }
-    WalletAdapter::instance().setWalletFile(filePath);
-
-    quint32 syncHeight = dlg.getSyncHeight();
-    if (syncHeight != 0) {
-      WalletAdapter::instance().createWithKeys(keys, syncHeight);
-    } else {
-      WalletAdapter::instance().createWithKeys(keys);
-    }
-  }
-}
-
 void MainWindow::importTrackingKey() {
   ImportTrackingKeyDialog dlg(this);
   if (dlg.exec() == QDialog::Accepted) {
@@ -572,6 +513,7 @@ void MainWindow::importTrackingKey() {
     }
 
     CryptoNote::AccountKeys keys = dlg.getAccountKeys();
+    CryptoNote::PqTrackingKeys trackingKeys = dlg.getTrackingKeys();
 
     if (WalletAdapter::instance().isOpen()) {
       closeWallet();
@@ -581,9 +523,9 @@ void MainWindow::importTrackingKey() {
 
     quint32 syncHeight = dlg.getSyncHeight();
     if (syncHeight != 0) {
-      WalletAdapter::instance().createWithKeys(keys, syncHeight);
+      WalletAdapter::instance().createTrackingWallet(keys, trackingKeys, syncHeight);
     } else {
-      WalletAdapter::instance().createWithKeys(keys);
+      WalletAdapter::instance().createTrackingWallet(keys, trackingKeys);
     }
   }
 }
@@ -594,7 +536,6 @@ void MainWindow::isTrackingMode() {
   m_ui->m_sendAction->setEnabled(false);
   m_ui->m_openUriAction->setEnabled(false);
   m_ui->m_showMnemonicSeedAction->setEnabled(false);
-  m_ui->m_proofBalanceAction->setEnabled(false);
   m_trackingModeIconLabel->show();
 }
 
@@ -695,7 +636,7 @@ void MainWindow::DisplayCmdLineHelp() {
     QMessageBox *msg = new QMessageBox(QMessageBox::Information, QObject::tr("Help"),
                        cmdLineParser.getHelpText(),
                        QMessageBox::Ok, this);
-    msg->setInformativeText(tr("More info can be found at www.karbowanec.com in Documentation section"));
+    msg->setInformativeText(tr("More info can be found at discrete.cash in Documentation section"));
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     msg->setFont(font);
     QSpacerItem* horizontalSpacer = new QSpacerItem(650, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
@@ -729,21 +670,6 @@ void MainWindow::openWalletRpcSettings() {
   if (dlg.exec() == QDialog::Accepted) {
     QMessageBox::information(this, tr("Wallet RPC settings changed"), tr("Changes will take effect when you restart the wallet."), QMessageBox::Ok);
   }
-}
-
-void MainWindow::getBalanceProof() {
-  if (WalletAdapter::instance().getActualBalance() == 0) {
-    QMessageBox::information(this, tr("Zero balance"), tr("You cannot generate balance proof of zero."), QMessageBox::Ok);
-    m_ui->m_proofBalanceAction->setEnabled(false);
-    return;
-  }
-
-  if (!confirmWithPassword()) {
-    return;
-  }
-
-  GetBalanceProofDialog dlg(&MainWindow::instance());
-  dlg.exec();
 }
 
 void MainWindow::showStatusInfo() {
@@ -849,16 +775,6 @@ void MainWindow::onUriOpenSignal() {
       isTrackingMode();
       return;
   }
-  m_ui->m_sendAction->trigger();
-}
-
-void MainWindow::onSendOutputs(QList<CryptoNote::TransactionOutputInformation> _selectedOutputs) {
-  if (Settings::instance().isTrackingMode()) {
-    isTrackingMode();
-    return;
-  }
-
-  m_ui->m_sendFrame->sendOutputs(_selectedOutputs);
   m_ui->m_sendAction->trigger();
 }
 
@@ -998,7 +914,6 @@ void MainWindow::lockWalletWithPassword() {
     m_ui->m_sendFrame->hide();
     m_ui->m_transactionsFrame->hide();
     m_ui->m_addressBookFrame->hide();
-    m_ui->m_coinsFrame->hide();
   }
   bool keep_asking = true;
   bool wrong_pass = false;
@@ -1076,7 +991,6 @@ void MainWindow::walletSynchronizationInProgress(uint32_t _current, uint32_t _to
     m_syncStatusLabel->show();
   }
   m_syncProgressBar->setValue(syncProgress);
-  m_ui->m_proofBalanceAction->setEnabled(false);
 }
 
 void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
@@ -1085,9 +999,6 @@ void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
   m_synchronizationStateIconLabel->setPixmap(syncIcon);
   QString syncLabelTooltip = _error > 0 ? tr("Not synchronized") : tr("Synchronized");
   m_synchronizationStateIconLabel->setToolTip(syncLabelTooltip);
-  if (WalletAdapter::instance().getActualBalance() > 0 && !(Settings::instance().isTrackingMode())) {
-    m_ui->m_proofBalanceAction->setEnabled(true);
-  }
   statusBar()->showMessage(m_statusBarText);
   m_syncProgressBar->hide();
   m_syncStatusLabel->hide();
@@ -1107,9 +1018,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     m_ui->m_openUriAction->setEnabled(true);
     m_ui->m_signMessageAction->setEnabled(true);
     m_ui->m_verifySignedMessageAction->setEnabled(true);
-    if (WalletAdapter::instance().getActualBalance() != 0)
-        m_ui->m_proofBalanceAction->setEnabled(true);
-    if(WalletAdapter::instance().isDeterministic()) {
+    if (!WalletAdapter::instance().isTrackingWallet()) {
        m_ui->m_showMnemonicSeedAction->setEnabled(true);
     }
     encryptedFlagChanged(Settings::instance().isEncrypted());
@@ -1119,7 +1028,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
       action->setEnabled(true);
     }
 
-    setWindowTitle(QString(tr("%1 - Karbo Wallet %2")).arg(Settings::instance().getWalletFile()).arg(Settings::instance().getVersion()));
+    setWindowTitle(QString(tr("%1 - Discrete Wallet %2")).arg(Settings::instance().getWalletFile()).arg(Settings::instance().getVersion()));
 
     m_ui->m_transactionsAction->trigger();
     accountWidget->setVisible(true);
@@ -1151,14 +1060,12 @@ void MainWindow::walletClosed() {
   m_ui->m_showMnemonicSeedAction->setEnabled(false);
   m_ui->m_signMessageAction->setEnabled(false);
   m_ui->m_verifySignedMessageAction->setEnabled(false);
-  m_ui->m_proofBalanceAction->setEnabled(false);
   m_ui->m_lockWalletAction->setEnabled(false);
   accountWidget->setVisible(false);
   m_ui->m_receiveFrame->hide();
   m_ui->m_sendFrame->hide();
   m_ui->m_transactionsFrame->hide();
   m_ui->m_addressBookFrame->hide();
-  m_ui->m_coinsFrame->hide();
   if (!m_ui->m_miningFrame->isSoloRunning()) {
     m_ui->m_noWalletFrame->show();
     m_ui->m_miningFrame->hide();
@@ -1169,7 +1076,7 @@ void MainWindow::walletClosed() {
   m_trackingModeIconLabel->hide();
   m_synchronizationStateIconLabel->hide();
 
-  setWindowTitle(QString(tr("Karbo Wallet %1")).arg(Settings::instance().getVersion()));
+  setWindowTitle(QString(tr("Discrete Wallet %1")).arg(Settings::instance().getVersion()));
 
   QList<QAction*> tabActions = m_tabActionGroup->actions();
   Q_FOREACH(auto action, tabActions) {
@@ -1184,20 +1091,14 @@ void MainWindow::walletClosed() {
 }
 
 void MainWindow::checkTrackingMode() {
-  CryptoNote::AccountKeys keys;
-  WalletAdapter::instance().getAccountKeys(keys);
-  if (keys.spendSecretKey == boost::value_initialized<Crypto::SecretKey>()) {
-    Settings::instance().setTrackingMode(true);
-  } else {
-    Settings::instance().setTrackingMode(false);
-  }
+  Settings::instance().setTrackingMode(WalletAdapter::instance().isTrackingWallet());
 }
 
 void MainWindow::createTrayIcon()
 {
 #ifdef Q_OS_WIN
-    m_trayIcon = new QSystemTrayIcon(QPixmap(":images/karbowanez"), this);
-    QString toolTip = QString(tr("Karbo Wallet %1")).arg(Settings::instance().getVersion());
+    m_trayIcon = new QSystemTrayIcon(QPixmap(":images/discrete"), this);
+    QString toolTip = QString(tr("Discrete Wallet %1")).arg(Settings::instance().getVersion());
     m_trayIcon->setToolTip(toolTip);
     m_trayIcon->show();
 #endif

@@ -1,9 +1,4 @@
-# 3.16 makes CMP0091 NEW by default, which lets us select the MSVC runtime via
-# CMAKE_MSVC_RUNTIME_LIBRARY (below) instead of by patching compile flags. This
-# is what keeps the Discrete backend (built as a subdirectory) on the same
-# dynamic CRT (/MD) as the official Qt binaries the GUI links against.
 cmake_minimum_required(VERSION 3.16)
-cmake_policy(SET CMP0091 NEW)
 
 # Required for finding Threads on ARM
 enable_language(C)
@@ -46,34 +41,6 @@ if(ARCH_ID STREQUAL "ppc64le")
 endif()
 
 project(${WALLET_NAME})
-
-# Tell the embedded Discrete backend it is being built inside the GUI wallet, so
-# it skips its standalone /MT runtime forcing and static-runtime Boost selection.
-set(DISCRETE_GUI_BUILD ON CACHE INTERNAL "Discrete backend is embedded in the GUI build")
-
-# Force the dynamic CRT everywhere (GUI, backend, liboqs, lmdb, miniupnpc) so the
-# whole binary uses one runtime and links cleanly against the dynamic-CRT Qt.
-if(MSVC)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-endif()
-
-# ---------------------------------------------------------------------------
-# Discrete backend
-#
-# Build the whole post-quantum core (its libraries plus the vendored externals
-# liboqs, lmdb, miniupnpc and chacha20poly1305) via the backend's own CMake as a
-# subdirectory, replacing the GUI's former inline backend-source list and its
-# standalone lmdb build.
-#
-# This MUST happen before the GUI defines WIN32_LEAN_AND_MEAN (further down):
-# that macro hides the NT API typedefs liblmdb's mdb.c declares, and the backend
-# is meant to compile without it (its own CMake adds WIN32_LEAN_AND_MEAN only
-# *after* building external/). Doing it here also keeps CMAKE_AUTOMOC (enabled
-# later, for the Qt GUI) off the backend libraries. CMAKE_MSVC_RUNTIME_LIBRARY
-# (set just above) keeps the whole tree on the dynamic CRT (/MD); DISCRETE_GUI_BUILD
-# tells the backend to skip its standalone /MT + static-runtime-Boost path.
-# ---------------------------------------------------------------------------
-add_subdirectory(cryptonote)
 
 execute_process(COMMAND git log -1 --pretty=format:%h
 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -171,167 +138,203 @@ configure_file(
     @ONLY
 )
 configure_file(
-    "${CMAKE_CURRENT_LIST_DIR}/src/karbowanecwallet.desktop.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/karbowanecwallet.desktop"
+    "${CMAKE_CURRENT_LIST_DIR}/src/discretewallet.desktop.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/discretewallet.desktop"
     @ONLY
 )
 
 add_definitions(-DVERSION=\"${WALLET_VERSION}\")
 add_definitions(-DGIT_REVISION=\"${GIT_REVISION}\")
 add_definitions(-DUPNP_STATIC -DMINIUPNP_STATICLIB -DUPNPC_BUILD_STATIC)
+add_definitions(-DSTATICLIB)
 
 set(CMAKE_AUTOMOC ON)
 
+# ---------------------------------------------------------------------------
+# Discrete backend
+#
+# cryptonote/ is a vendored, pulled-as-is copy of the Discrete backend: nothing
+# under it is modified. Its own top-level CMake (cryptonote/CMakeLists.txt)
+# builds five CLI/daemon executables (discreted, simplewallet, greenwallet,
+# walletd, vanitygen) this GUI never links against, and defaults to a static
+# CRT (/MT) for those standalone binaries, which conflicts with Qt's dynamic
+# CRT (/MD). So rather than add_subdirectory(cryptonote), pull in only the
+# vendored third-party externals it needs (each self-contained, with its own
+# CMakeLists.txt) and compile Discrete's own .cpp/.c sources directly into
+# libraries this CMakeLists.txt owns, the same way this wallet built Karbo's
+# cryptonote sources before the PQ port — just updated for Discrete's added
+# liboqs/chacha20poly1305 dependencies and source layout.
+# ---------------------------------------------------------------------------
+
+# --- liblmdb ---------------------------------------------------------------
+if (MSVC)
+  # Building lmdb in-tree (as a source list compiled into another target)
+  # fails on MSVC: mdb.c needs NT API typedefs that WIN32_LEAN_AND_MEAN (set
+  # below, for Qt) hides. Building it as its own out-of-process CMake project
+  # sidesteps that entirely; this is the same technique the standalone Karbo
+  # wallet build already used successfully for the same reason.
+  set(_lmdb_src_dir "${CMAKE_SOURCE_DIR}/cryptonote/external/liblmdb")
+  set(_lmdb_build_dir "${CMAKE_BINARY_DIR}/lmdb_external")
+  if(CMAKE_BUILD_TYPE)
+    set(_lmdb_config "${CMAKE_BUILD_TYPE}")
+  else()
+    set(_lmdb_config "Release")
+  endif()
+
+  message(STATUS "Configuring lmdb externally (${_lmdb_config}) in ${_lmdb_build_dir}")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+      -G "Visual Studio 17 2022"
+      -A x64
+      -S "${_lmdb_src_dir}"
+      -B "${_lmdb_build_dir}"
+    RESULT_VARIABLE _lmdb_configure_result
+    OUTPUT_QUIET
+    ERROR_VARIABLE _lmdb_configure_error
+  )
+  if(NOT _lmdb_configure_result EQUAL 0)
+    message(FATAL_ERROR "lmdb configure failed:\n${_lmdb_configure_error}")
+  endif()
+
+  message(STATUS "Building lmdb externally...")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${_lmdb_build_dir}" --config "${_lmdb_config}"
+    RESULT_VARIABLE _lmdb_build_result
+    OUTPUT_QUIET
+    ERROR_VARIABLE _lmdb_build_error
+  )
+  if(NOT _lmdb_build_result EQUAL 0)
+    message(FATAL_ERROR "lmdb build failed:\n${_lmdb_build_error}")
+  endif()
+
+  add_library(lmdb STATIC IMPORTED GLOBAL)
+  set_target_properties(lmdb PROPERTIES
+    IMPORTED_LOCATION "${_lmdb_build_dir}/${_lmdb_config}/lmdb.lib"
+    INTERFACE_INCLUDE_DIRECTORIES "${_lmdb_src_dir}"
+  )
+else()
+  set(LMDB_SOURCES
+    cryptonote/external/liblmdb/mdb.c
+    cryptonote/external/liblmdb/midl.c)
+  add_library(lmdb STATIC ${LMDB_SOURCES})
+  target_include_directories(lmdb PUBLIC cryptonote/external/liblmdb)
+  set_property(TARGET lmdb APPEND PROPERTY COMPILE_FLAGS "-fPIC")
+endif()
+include_directories(cryptonote/external/liblmdb)
+
+# --- miniupnpc ---------------------------------------------------------------
+set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
+set(UPNPC_BUILD_SHARED OFF CACHE BOOL "Build shared library")
+set(UPNPC_BUILD_TESTS OFF CACHE BOOL "Build test executables")
+add_subdirectory(cryptonote/external/miniupnpc)
+if (MSVC)
+  set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267 -wd4996")
+endif()
+
+# --- chacha20poly1305 --------------------------------------------------------
+add_subdirectory(cryptonote/external/chacha20poly1305)
+
+# --- liboqs (Open Quantum Safe): ML-KEM-768 + ML-DSA-65 only, matching
+# cryptonote/external/CMakeLists.txt's own configuration of the same vendored
+# snapshot verbatim. ---
+set(OQS_BUILD_ONLY_LIB        ON  CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS         OFF CACHE BOOL "" FORCE)
+set(OQS_DIST_BUILD            OFF CACHE BOOL "" FORCE)
+set(OQS_USE_OPENSSL           OFF CACHE BOOL "" FORCE)
+set(OQS_USE_SHA2_OPENSSL      OFF CACHE BOOL "" FORCE)
+set(OQS_USE_SHA3_OPENSSL      OFF CACHE BOOL "" FORCE)
+set(OQS_USE_AES_OPENSSL       OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_BIKE             OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_FRODOKEM         OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_NTRUPRIME        OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_CLASSIC_MCELIECE OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_HQC              OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_KYBER            OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_ML_KEM           ON  CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_ml_kem_512       OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_ml_kem_768       ON  CACHE BOOL "" FORCE)
+set(OQS_ENABLE_KEM_ml_kem_1024      OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_DILITHIUM        OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_FALCON           OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_SPHINCS          OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_MAYO             OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_CROSS            OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_UOV              OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_ML_DSA           ON  CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_ml_dsa_44        OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_ml_dsa_65        ON  CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_ml_dsa_87        OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_STFL_XMSS        OFF CACHE BOOL "" FORCE)
+set(OQS_ENABLE_SIG_STFL_LMS         OFF CACHE BOOL "" FORCE)
+add_subdirectory(cryptonote/external/liboqs)
+set(DISCRETE_OQS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/cryptonote/external/liboqs/include")
+
+if (MSVC)
+  # liboqs's own MSVC compiler_opts.cmake unconditionally injects a raw /MT
+  # (static CRT) compile flag, which can't link against this GUI's dynamic-CRT
+  # (/MD) Qt. cryptonote/ must not be edited to work around this (it is pulled
+  # and used as-is), so override from here instead: MSVC honors the *last*
+  # /MT or /MD flag seen on the command line, and a target_compile_options()
+  # call made after add_subdirectory() returns always lands after the child's
+  # own directory-level add_compile_options(), so this wins without touching
+  # a single file under cryptonote/.
+  function(discrete_oqs_force_dynamic_crt dir)
+    get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+    foreach(_subdir ${_subdirs})
+      discrete_oqs_force_dynamic_crt("${_subdir}")
+    endforeach()
+    get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_target ${_targets})
+      get_target_property(_type ${_target} TYPE)
+      if(_type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|OBJECT_LIBRARY)$")
+        target_compile_options(${_target} PRIVATE $<$<CONFIG:Debug>:/MDd> $<$<NOT:$<CONFIG:Debug>>:/MD>)
+      endif()
+    endforeach()
+  endfunction()
+  discrete_oqs_force_dynamic_crt("${CMAKE_CURRENT_SOURCE_DIR}/cryptonote/external/liboqs")
+endif()
+
+# --- Discrete's own sources, compiled directly (not via cryptonote/src's
+# CMakeLists.txt, which also builds the 5 CLI/daemon executables noted above).
+# Each glob mirrors the grouping cryptonote/src/CMakeLists.txt itself uses. ---
+file(GLOB_RECURSE Discrete_Common cryptonote/src/Common/*)
+file(GLOB_RECURSE Discrete_Crypto cryptonote/src/crypto/*)
+file(GLOB_RECURSE Discrete_CryptoPq cryptonote/src/crypto_pq/*)
+file(GLOB_RECURSE Discrete_CryptoNoteCore cryptonote/src/CryptoNoteCore/* cryptonote/src/CryptoNoteConfig.h)
+file(GLOB_RECURSE Discrete_CryptoNoteProtocol cryptonote/src/CryptoNoteProtocol/*)
+file(GLOB_RECURSE Discrete_Checkpoints cryptonote/src/Checkpoints/*)
+file(GLOB_RECURSE Discrete_Http cryptonote/src/HTTP/*)
+file(GLOB_RECURSE Discrete_InProcessNode cryptonote/src/InProcessNode/*)
+file(GLOB_RECURSE Discrete_Logging cryptonote/src/Logging/*)
+file(GLOB_RECURSE Discrete_NodeRpcProxy cryptonote/src/NodeRpcProxy/*)
+file(GLOB_RECURSE Discrete_P2p cryptonote/src/P2p/*)
+file(GLOB_RECURSE Discrete_Rpc cryptonote/src/Rpc/*)
+file(GLOB_RECURSE Discrete_Serialization cryptonote/src/Serialization/*)
+file(GLOB_RECURSE Discrete_System cryptonote/src/System/*)
+file(GLOB_RECURSE Discrete_Transfers cryptonote/src/Transfers/*)
+file(GLOB_RECURSE Discrete_Wallet cryptonote/src/Wallet/*)
+file(GLOB_RECURSE Discrete_WalletLegacy cryptonote/src/WalletLegacy/*)
+file(GLOB_RECURSE Discrete_BlockchainExplorer cryptonote/src/BlockchainExplorer/*)
+
 set(CRYPTONOTE_SOURCES
-  cryptonote/external/miniupnpc/connecthostport.c
-  cryptonote/external/miniupnpc/igd_desc_parse.c
-  cryptonote/external/miniupnpc/minisoap.c
-  cryptonote/external/miniupnpc/minissdpc.c
-  cryptonote/external/miniupnpc/miniupnpc.c
-  cryptonote/external/miniupnpc/miniwget.c
-  cryptonote/external/miniupnpc/minixml.c
-  cryptonote/external/miniupnpc/portlistingparse.c
-  cryptonote/external/miniupnpc/receivedata.c
-  cryptonote/external/miniupnpc/upnpcommands.c
-  cryptonote/external/miniupnpc/upnpdev.c
-  cryptonote/external/miniupnpc/upnperrors.c
-  cryptonote/external/miniupnpc/upnpreplyparse.c
-  cryptonote/src/Checkpoints/Checkpoints.cpp
-  cryptonote/src/Common/Base58.cpp
-  cryptonote/src/Common/CommandLine.cpp
-  cryptonote/src/Common/FormatTools.cpp
-  cryptonote/src/Common/Util.cpp
-  cryptonote/src/Common/StringTools.cpp
-  cryptonote/src/Common/JsonValue.cpp
-  cryptonote/src/Common/ConsoleTools.cpp
-  cryptonote/src/Common/MemoryInputStream.cpp
-  cryptonote/src/Common/PathTools.cpp
-  cryptonote/src/Common/PasswordContainer.cpp
-  cryptonote/src/Common/DnsTools.cpp
-  cryptonote/src/Common/StdInputStream.cpp
-  cryptonote/src/Common/StdOutputStream.cpp
-  cryptonote/src/Common/StreamTools.cpp
-  cryptonote/src/Common/StringOutputStream.cpp
-  cryptonote/src/Common/StringView.cpp
-  cryptonote/src/Common/VectorOutputStream.cpp
-  cryptonote/src/crypto/blake256.c
-  cryptonote/src/crypto/chacha8.cpp
-  cryptonote/src/crypto/crypto-ops-data.c
-  cryptonote/src/crypto/crypto-ops.c
-  cryptonote/src/crypto/crypto-util.c
-  cryptonote/src/crypto/crypto.cpp
-  cryptonote/src/crypto/groestl.c
-  cryptonote/src/crypto/hash-extra-blake.c
-  cryptonote/src/crypto/hash-extra-groestl.c
-  cryptonote/src/crypto/hash-extra-jh.c
-  cryptonote/src/crypto/hash-extra-skein.c
-  cryptonote/src/crypto/hash.c
-  cryptonote/src/crypto/jh.c
-  cryptonote/src/crypto/keccak.c
-  cryptonote/src/crypto/oaes_lib.c
-  cryptonote/src/crypto/skein.c
-  cryptonote/src/crypto/slow-hash.c
-  cryptonote/src/crypto/slow-hash.cpp
-  cryptonote/src/crypto/tree-hash.c
-  cryptonote/src/crypto/yespower.c
-  cryptonote/src/CryptoNoteCore/BlockchainIndices.cpp
-  cryptonote/src/CryptoNoteCore/LMDBBlockchainDB.cpp
-  cryptonote/src/CryptoNoteCore/BlockchainMessages.cpp
-  cryptonote/src/CryptoNoteCore/BlockIndex.cpp
-  cryptonote/src/CryptoNoteCore/CoreConfig.cpp
-  cryptonote/src/CryptoNoteCore/CryptoNoteBasic.cpp
-  cryptonote/src/CryptoNoteCore/CryptoNoteTools.cpp
-  cryptonote/src/CryptoNoteCore/Currency.cpp
-  cryptonote/src/CryptoNoteCore/MinerConfig.cpp
-  cryptonote/src/CryptoNoteCore/Transaction.cpp
-  cryptonote/src/CryptoNoteCore/Account.cpp
-  cryptonote/src/CryptoNoteCore/Blockchain.cpp
-  cryptonote/src/CryptoNoteCore/CryptoNoteBasicImpl.cpp
-  cryptonote/src/CryptoNoteCore/Core.cpp
-  cryptonote/src/CryptoNoteCore/CryptoNoteFormatUtils.cpp
-  cryptonote/src/CryptoNoteCore/CryptoNoteSerialization.cpp
-  cryptonote/src/CryptoNoteCore/Difficulty.cpp
-  cryptonote/src/CryptoNoteCore/IBlock.cpp
-  cryptonote/src/CryptoNoteCore/Miner.cpp
-  cryptonote/src/CryptoNoteCore/TransactionExtra.cpp
-  cryptonote/src/CryptoNoteCore/TransactionPool.cpp
-  cryptonote/src/CryptoNoteCore/TransactionPrefixImpl.cpp
-  cryptonote/src/CryptoNoteCore/TransactionUtils.cpp
-  cryptonote/src/CryptoNoteProtocol/CryptoNoteProtocolHandler.cpp
-  cryptonote/src/InProcessNode/InProcessNode.cpp
-  cryptonote/src/InProcessNode/InProcessNodeErrors.cpp
-  cryptonote/src/HTTP/HttpServer.cpp
-  cryptonote/src/HTTP/HttpClient.cpp
-  cryptonote/src/HTTP/HttpParser.cpp
-  cryptonote/src/HTTP/HttpParserErrorCodes.cpp
-  cryptonote/src/HTTP/HttpRequest.cpp
-  cryptonote/src/HTTP/HttpResponse.cpp
-  cryptonote/src/Logging/ILogger.cpp
-  cryptonote/src/Logging/LoggerGroup.cpp
-  cryptonote/src/Logging/CommonLogger.cpp
-  cryptonote/src/Logging/LoggerManager.cpp
-  cryptonote/src/Logging/FileLogger.cpp
-  cryptonote/src/Logging/StreamLogger.cpp
-  cryptonote/src/Logging/ConsoleLogger.cpp
-  cryptonote/src/Logging/LoggerMessage.cpp
-  cryptonote/src/Logging/LoggerRef.cpp
-  cryptonote/src/NodeRpcProxy/NodeErrors.cpp
-  cryptonote/src/NodeRpcProxy/NodeRpcProxy.cpp
-  cryptonote/src/P2p/LevinProtocol.cpp
-  cryptonote/src/P2p/NetNodeConfig.cpp
-  cryptonote/src/P2p/NetNode.cpp
-  cryptonote/src/P2p/NetNodeConfig.cpp
-  cryptonote/src/P2p/PeerListManager.cpp
-  cryptonote/src/P2p/P2pConnectionContext.cpp
-  cryptonote/src/Rpc/JsonRpc.cpp
-  cryptonote/src/Rpc/RpcServer.cpp
-  cryptonote/src/Rpc/RpcServerConfig.cpp
-  cryptonote/src/Rpc/BuiltinExplorer.cpp
-  cryptonote/src/Serialization/BinaryInputStreamSerializer.cpp
-  cryptonote/src/Serialization/BinaryOutputStreamSerializer.cpp
-  cryptonote/src/Serialization/JsonInputValueSerializer.cpp
-  cryptonote/src/Serialization/JsonOutputStreamSerializer.cpp
-  cryptonote/src/Serialization/KVBinaryInputStreamSerializer.cpp
-  cryptonote/src/Serialization/KVBinaryOutputStreamSerializer.cpp
-  cryptonote/src/Serialization/BlockchainExplorerDataSerialization.cpp
-  cryptonote/src/Serialization/SerializationOverloads.cpp
-  cryptonote/src/System/ContextGroup.cpp
-  cryptonote/src/System/Dispatcher.cpp
-  cryptonote/src/System/Event.cpp
-  cryptonote/src/System/EventLock.cpp
-  cryptonote/src/System/InterruptedException.cpp
-  cryptonote/src/System/Ipv4Address.cpp
-  cryptonote/src/System/SocketStream.cpp
-  cryptonote/src/System/TcpStream.cpp
-  cryptonote/src/System/SslTcpStreambuf.cpp
-  cryptonote/src/System/TcpConnection.cpp
-  cryptonote/src/System/TcpListener.cpp
-  cryptonote/src/System/TcpConnector.cpp
-  cryptonote/src/Transfers/BlockchainSynchronizer.cpp
-  cryptonote/src/Transfers/SynchronizationState.cpp
-  cryptonote/src/Transfers/TransfersConsumer.cpp
-  cryptonote/src/Transfers/TransfersContainer.cpp
-  cryptonote/src/Transfers/TransfersSubscription.cpp
-  cryptonote/src/Transfers/TransfersSynchronizer.cpp
-  cryptonote/src/Wallet/LegacyKeysImporter.cpp
-  cryptonote/src/Wallet/TransactionBuilder.cpp
-  cryptonote/src/Wallet/WalletAsyncContextCounter.cpp
-  cryptonote/src/Wallet/WalletErrors.cpp
-  cryptonote/src/Wallet/WalletRpcServer.cpp
-  cryptonote/src/Wallet/WalletSerializationV1.cpp
-  cryptonote/src/Wallet/WalletSerializationV2.cpp
-  cryptonote/src/Wallet/WalletUtils.cpp
-  cryptonote/src/WalletLegacy/KeysStorage.cpp
-  cryptonote/src/WalletLegacy/WalletLegacy.cpp
-  cryptonote/src/WalletLegacy/WalletHelper.cpp
-  cryptonote/src/WalletLegacy/WalletLegacySerializer.cpp
-  cryptonote/src/WalletLegacy/WalletLegacySerialization.cpp
-  cryptonote/src/WalletLegacy/WalletTransactionSender.cpp
-  cryptonote/src/WalletLegacy/WalletUnconfirmedTransactions.cpp
-  cryptonote/src/WalletLegacy/WalletUserTransactionsCache.cpp
-  cryptonote/src/BlockchainExplorer/BlockchainExplorer.cpp
-  cryptonote/src/BlockchainExplorer/BlockchainExplorerDataBuilder.cpp
-  cryptonote/src/BlockchainExplorer/BlockchainExplorerErrors.cpp
+  ${Discrete_Common}
+  ${Discrete_Crypto}
+  ${Discrete_CryptoPq}
+  ${Discrete_CryptoNoteCore}
+  ${Discrete_CryptoNoteProtocol}
+  ${Discrete_Checkpoints}
+  ${Discrete_Http}
+  ${Discrete_InProcessNode}
+  ${Discrete_Logging}
+  ${Discrete_NodeRpcProxy}
+  ${Discrete_P2p}
+  ${Discrete_Rpc}
+  ${Discrete_Serialization}
+  ${Discrete_System}
+  ${Discrete_Transfers}
+  ${Discrete_Wallet}
+  ${Discrete_WalletLegacy}
+  ${Discrete_BlockchainExplorer}
 )
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
@@ -379,13 +382,12 @@ if (WIN32)
   set(BUILD_RESOURCES src/cryptonotewallet.rc)
 
 elseif (UNIX)
-  set(CRYPTONOTE_SOURCES ${CRYPTONOTE_SOURCES} cryptonote/external/miniupnpc/minissdpc.c)
   if (APPLE)
     enable_language(ASM)
     file(GLOB_RECURSE OBJC_SOURCES src/*.mm)
     set(SOURCES ${SOURCES} ${OBJC_SOURCES})
     set(PLATFORM_DIR OSX)
-    set(MACOSX_BUNDLE_INFO_STRING "Karbowanec GUI Wallet")
+    set(MACOSX_BUNDLE_INFO_STRING "Discrete GUI Wallet")
     set(MACOSX_BUNDLE_LONG_VERSION_STRING "${VERSION_VERSION}.${VERSION_MINOR}.${VERSION_PATCH}")
     set(MACOSX_BUNDLE_BUNDLE_NAME "Karbo Wallet")
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION_VERSION}.${VERSION_MINOR}.${VERSION_PATCH}")
@@ -406,8 +408,8 @@ elseif (UNIX)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -D_DARWIN_C_SOURCE")
     
-    set(MACOSX_BUNDLE_ICON_FILE karbowanec.icns)
-    set(APPLICATION_ICON src/images/karbowanec.icns)
+    set(MACOSX_BUNDLE_ICON_FILE discrete.icns)
+    set(APPLICATION_ICON src/images/discrete.icns)
     set_source_files_properties(${APPLICATION_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
     set(BUILD_PLATFORM MACOSX_BUNDLE)
@@ -546,42 +548,26 @@ include_directories(cryptonote/src/Platform/Posix)
 file(GLOB PLATFORM_SOURCES cryptonote/src/Platform/${PLATFORM_DIR}/System/*)
 set(CRYPTONOTE_SOURCES ${CRYPTONOTE_SOURCES} ${PLATFORM_SOURCES})
 
-# Discrete backend libraries are built early (see add_subdirectory(cryptonote)
-# right after project()); here we just expose lmdb's headers to the GUI.
-include_directories(cryptonote/external/liblmdb)
+add_library(${CRYPTONOTE_LIB} STATIC ${CRYPTONOTE_SOURCES})
+target_include_directories(${CRYPTONOTE_LIB} PRIVATE ${DISCRETE_OQS_INCLUDE_DIR})
+add_library(Mnemonics ${Mnemonics})
+set_target_properties(${CRYPTONOTE_LIB} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+
+if (APPLE OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+target_link_libraries(${CRYPTONOTE_LIB} ${Boost_LIBRARIES} lmdb oqs chacha20poly1305 upnpc-static -lresolv)
+else ()
+target_link_libraries(${CRYPTONOTE_LIB} ${Boost_LIBRARIES} lmdb oqs chacha20poly1305 upnpc-static)
+endif ()
+set_target_properties(Mnemonics PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+target_link_libraries(Mnemonics ${Boost_LIBRARIES})
 
 add_library(QCustomPlot ${QCustomPlot})
 set_target_properties(QCustomPlot PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
 target_link_libraries(QCustomPlot Qt6::Core Qt6::PrintSupport)
 
-# Discrete core libraries the GUI links against. Each pulls its own
-# dependencies transitively, but we list the leaves explicitly to mirror the
-# backend's own executables and keep MSVC link order deterministic.
-set(DISCRETE_CORE_LIBS
-  Wallet
-  Transfers
-  NodeRpcProxy
-  InProcessNode
-  Rpc
-  Http
-  P2P
-  CryptoNoteCore
-  CryptoNoteProtocol
-  BlockchainExplorer
-  Logging
-  Serialization
-  System
-  Checkpoints
-  Crypto
-  CryptoPq
-  Mnemonics
-  Common
-  upnpc-static
-  ${LMDB_LIBRARY})
-
 add_executable(${PROJECT_NAME} ${BUILD_PLATFORM} ${BUILD_RESOURCES} ${SOURCES} ${HEADERS} ${UIS} ${RCC})
 set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-target_link_libraries(${PROJECT_NAME} ${DISCRETE_CORE_LIBS} ${Boost_LIBRARIES} ${QTMAIN} ${QRENCODE_LIB} QCustomPlot)
+target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${QTMAIN} ${CRYPTONOTE_LIB} ${QRENCODE_LIB} Mnemonics QCustomPlot)
 if (KARBO_USE_QLEMENTINE)
   target_link_libraries(${PROJECT_NAME} qlementine)
   target_compile_definitions(${PROJECT_NAME} PRIVATE KARBO_USE_QLEMENTINE=1)
@@ -640,8 +626,8 @@ endif()
 # Print version for debugging
 message(STATUS "CPACK PACKAGE VERSION: ${CPACK_PACKAGE_VERSION}")
 message(STATUS "MAJOR: ${CPACK_PACKAGE_VERSION_MAJOR}, MINOR: ${CPACK_PACKAGE_VERSION_MINOR}, PATCH: ${CPACK_PACKAGE_VERSION_PATCH}")
-set(CPACK_PACKAGE_VENDOR "Karbowanec-project")
-set(CPACK_PACKAGE_CONTACT "https://karbo.org")
+set(CPACK_PACKAGE_VENDOR "Discrete")
+set(CPACK_PACKAGE_CONTACT "https://discrete.cash")
 set(CPACK_STRIP_FILES ON)
 if (APPLE)
     set(CPACK_GENERATOR DragNDrop)
@@ -653,10 +639,10 @@ elseif (UNIX)
 
     install(PROGRAMS ${CMAKE_BINARY_DIR}/${PROJECT_NAME} DESTINATION bin
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-    install(FILES ${CMAKE_BINARY_DIR}/karbowanecwallet.desktop DESTINATION share/applications)
-    install(FILES src/images/karbowanez.png DESTINATION share/pixmaps RENAME karbowanec.png)
-    install(FILES copyright DESTINATION share/doc/karbowanecwallet)
-    install(DIRECTORY "${CMAKE_BINARY_DIR}/languages" DESTINATION /opt/karbo/ FILES_MATCHING PATTERN "*.qm")
+    install(FILES ${CMAKE_BINARY_DIR}/discretewallet.desktop DESTINATION share/applications)
+    install(FILES src/images/discrete.png DESTINATION share/pixmaps)
+    install(FILES copyright DESTINATION share/doc/discretewallet)
+    install(DIRECTORY "${CMAKE_BINARY_DIR}/languages" DESTINATION /opt/discrete/ FILES_MATCHING PATTERN "*.qm")
 
     if (RPMBUILD)
         set(CPACK_GENERATOR "RPM;DEB")
@@ -665,49 +651,49 @@ elseif (UNIX)
         set(CPACK_RPM_PACKAGE_LICENSE "MIT")
         set(CPACK_RPM_PACKAGE_GROUP Office)
         set(CPACK_RPM_PACKAGE_REQUIRES "qt6-base >= 6.0.0, qt6-base-gui >= 6.0.0")
-        set(CPACK_RPM_PACKAGE_SUMMARY "Karbowanec KRB wallet")
-        set(CPACK_RPM_PACKAGE_DESCRIPTION "Karbowanec KRB wallet
- Karbowanec is Ukrainian decentrilized, privacy oriented peer-to-peer
- cryptocurrency. It is open-source, nobody owns or controls Karbowanec
- and everyone can take part.")
+        set(CPACK_RPM_PACKAGE_SUMMARY "Discrete XDS wallet")
+        set(CPACK_RPM_PACKAGE_DESCRIPTION "Discrete XDS wallet
+ Discrete is a post-quantum-only cryptocurrency: a CryptoNote-family chain
+ in which every block and transaction is post-quantum from genesis. It is
+ open-source and decentralized, with no legacy elliptic-curve chain.")
     else ()
 		set(CPACK_GENERATOR DEB)
 	endif ()
-	
+
 	set(CPACK_SYSTEM_NAME 64-bit)
-	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR} <krbcoin@ukr.net>")
+	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR} <contact@discrete.cash>")
 	set(CPACK_DEBIAN_PACKAGE_SECTION Office)
 	set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-	set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Karbowanec KRB wallet
- Karbowanec is Ukrainian decentralized, privacy oriented peer-to-peer
- cryptocurrency. It is open-source, nobody owns or controls Karbowanec
- and everyone can take part.")
+	set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Discrete XDS wallet
+ Discrete is a post-quantum-only cryptocurrency: a CryptoNote-family chain
+ in which every block and transaction is post-quantum from genesis. It is
+ open-source and decentralized, with no legacy elliptic-curve chain.")
 
 	set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_SYSTEM_NAME}")
 elseif (WIN32)
     set(CMAKE_INSTALL_UCRT_LIBRARIES TRUE)
     include(InstallRequiredSystemLibraries)
 
-	set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Karbowanec KRB wallet
- Karbowanec is Ukrainian decentralized, privacy oriented peer-to-peer
- cryptocurrency. It is open-source, nobody owns or controls Karbowanec
- and everyone can take part.")
+	set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Discrete XDS wallet
+ Discrete is a post-quantum-only cryptocurrency: a CryptoNote-family chain
+ in which every block and transaction is post-quantum from genesis. It is
+ open-source and decentralized, with no legacy elliptic-curve chain.")
 
-    set (CPACK_PACKAGE_INSTALL_DIRECTORY "Karbowanec")
+    set (CPACK_PACKAGE_INSTALL_DIRECTORY "Discrete")
 
     # Define components and their display names
     set (CPACK_COMPONENTS_ALL applications)
-    set (CPACK_COMPONENT_APPLICATIONS_DISPLAY_NAME "Karbo wallet")
+    set (CPACK_COMPONENT_APPLICATIONS_DISPLAY_NAME "Discrete wallet")
 
     # Human readable component descriptions
     set (CPACK_COMPONENT_APPLICATIONS_DESCRIPTION
-      "Ukrainian decentralized, privacy oriented peer-to-peer cryptocurrency")
+      "Post-quantum-only decentralized peer-to-peer cryptocurrency")
 
     # Define groups
     set(CPACK_COMPONENT_APPLICATIONS_GROUP "Runtime")
 
     set(CPACK_COMPONENT_GROUP_DEVELOPMENT_DESCRIPTION
-       "Ukrainian decentralized, privacy oriented peer-to-peer cryptocurrency")
+       "Post-quantum-only decentralized peer-to-peer cryptocurrency")
 
     # Define NSIS installation types
     set(CPACK_ALL_INSTALL_TYPES Full)

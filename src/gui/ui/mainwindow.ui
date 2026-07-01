@@ -44,7 +44,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="../../resources.qrc">
-    <normaloff>:/images/karbowanez</normaloff>:/images/karbowanez</iconset>
+    <normaloff>:/images/discrete</normaloff>:/images/discrete</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="sizePolicy">
@@ -165,22 +165,6 @@
       </property>
      </widget>
     </item>
-    <item row="1" column="7">
-     <widget class="WalletGui::CoinsFrame" name="m_coinsFrame">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
-      </property>
-      <property name="frameShape">
-       <enum>QFrame::Shape::NoFrame</enum>
-      </property>
-      <property name="frameShadow">
-       <enum>QFrame::Shadow::Raised</enum>
-      </property>
-     </widget>
-    </item>
     <item row="0" column="0" colspan="8">
      <widget class="WalletGui::AccountFrame" name="m_accountFrame">
       <property name="sizePolicy">
@@ -233,7 +217,6 @@
      </property>
     </widget>
     <addaction name="m_createWalletAction"/>
-    <addaction name="m_createNondeterministicWalletAction"/>
     <addaction name="m_openWalletAction"/>
     <addaction name="menuRecent_wallets"/>
     <addaction name="m_backupWalletAction"/>
@@ -283,14 +266,12 @@
     </property>
     <addaction name="m_encryptWalletAction"/>
     <addaction name="m_changePasswordAction"/>
-    <addaction name="m_proofBalanceAction"/>
     <addaction name="separator"/>
     <addaction name="m_showMnemonicSeedAction"/>
     <addaction name="m_showPrivateKey"/>
     <addaction name="m_exportTrackingKeyAction"/>
     <addaction name="separator"/>
     <addaction name="m_restoreFromMnemonicSeedAction"/>
-    <addaction name="m_importKeysAction"/>
     <addaction name="m_importKeyAction"/>
     <addaction name="m_importTrackingKeyAction"/>
     <addaction name="separator"/>
@@ -366,7 +347,6 @@
    <addaction name="m_receiveAction"/>
    <addaction name="m_addressBookAction"/>
    <addaction name="m_miningAction"/>
-   <addaction name="m_coinsAction"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <widget class="QToolBar" name="accountToolBar">
@@ -449,21 +429,6 @@
    </property>
    <property name="text">
     <string>Contacts</string>
-   </property>
-  </action>
-  <action name="m_coinsAction">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="enabled">
-    <bool>true</bool>
-   </property>
-   <property name="icon">
-    <iconset resource="../../resources.qrc">
-     <normaloff>:/icons/coins</normaloff>:/icons/coins</iconset>
-   </property>
-   <property name="text">
-    <string>Coins</string>
    </property>
   </action>
   <action name="m_createWalletAction">
@@ -640,11 +605,6 @@
     <string>Restore from mnemonic seed</string>
    </property>
   </action>
-  <action name="m_createNondeterministicWalletAction">
-   <property name="text">
-    <string>Create nondeterministic wallet</string>
-   </property>
-  </action>
   <action name="m_miningOnLaunchAction">
    <property name="checkable">
     <bool>true</bool>
@@ -661,16 +621,6 @@
   <action name="m_verifySignedMessageAction">
    <property name="text">
     <string>Verify signed message</string>
-   </property>
-  </action>
-  <action name="m_proofBalanceAction">
-   <property name="text">
-    <string>Get proof of balance</string>
-   </property>
-  </action>
-  <action name="m_importKeysAction">
-   <property name="text">
-    <string>Import keys</string>
    </property>
   </action>
   <action name="m_lockWalletAction">
@@ -741,12 +691,6 @@
    <class>WalletGui::NoWalletFrame</class>
    <extends>QWidget</extends>
    <header>gui/NoWalletFrame.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>WalletGui::CoinsFrame</class>
-   <extends>QFrame</extends>
-   <header>gui/CoinsFrame.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
@@ -1011,22 +955,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_coinsAction</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>m_coinsFrame</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>787</x>
-     <y>333</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_sendAction</sender>
    <signal>toggled(bool)</signal>
    <receiver>m_sendFrame</receiver>
@@ -1203,22 +1131,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_createNondeterministicWalletAction</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>createNonDeterministicWallet()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>489</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_signMessageAction</sender>
    <signal>triggered()</signal>
    <receiver>MainWindow</receiver>
@@ -1271,38 +1183,6 @@
    <signal>triggered()</signal>
    <receiver>m_noWalletFrame</receiver>
    <slot>hide()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>489</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>m_proofBalanceAction</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>getBalanceProof()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>489</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>m_importKeysAction</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>importKeys()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>-1</x>
@@ -1396,7 +1276,6 @@
   <slot>openConnectionSettings()</slot>
   <slot>openWalletRpcSettings()</slot>
   <slot>showStatusInfo()</slot>
-  <slot>getBalanceProof()</slot>
   <slot>lockWalletWithPassword()</slot>
   <slot>hideEverythingOnLocked(bool)</slot>
   <slot>exportTrackingKey()</slot>
@@ -1405,10 +1284,8 @@
   <slot>restoreFromMnemonicSeed()</slot>
   <slot>openLogFile()</slot>
   <slot>closeWallet()</slot>
-  <slot>createNonDeterministicWallet()</slot>
   <slot>signMessage()</slot>
   <slot>verifyMessage()</slot>
   <slot>setMiningOnLaunch(bool)</slot>
-  <slot>importKeys()</slot>
  </slots>
 </ui>

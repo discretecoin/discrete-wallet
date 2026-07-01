@@ -1,4 +1,4 @@
-Name "Karbo Wallet (64-bit)"
+Name "Discrete Wallet (64-bit)"
 
 # General Symbol Definitions
 !define PROJECT_NAME "@WALLET_NAME@"
@@ -14,7 +14,7 @@ SetCompressor /SOLID lzma
 OutFile ".\Release\${PROJECT_NAME}-Setup.exe"
 
 # MUI Symbol Definitions
-!define MUI_ICON "..\src\images\karbowanez.ico"
+!define MUI_ICON "..\src\images\discrete.ico"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "..\src\images\nsis-wizard.bmp"
 !define MUI_HEADERIMAGE
 !define MUI_HEADERIMAGE_RIGHT
@@ -23,7 +23,7 @@ OutFile ".\Release\${PROJECT_NAME}-Setup.exe"
 !define MUI_STARTMENUPAGE_REGISTRY_ROOT HKLM
 !define MUI_STARTMENUPAGE_REGISTRY_KEY ${REGKEY}
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME StartMenuGroup
-!define MUI_STARTMENUPAGE_DEFAULTFOLDER "Karbo Wallet"
+!define MUI_STARTMENUPAGE_DEFAULTFOLDER "Discrete Wallet"
 !define MUI_FINISHPAGE_RUN "$WINDIR\explorer.exe"
 !define MUI_FINISHPAGE_RUN_PARAMETERS "$INSTDIR\${PROJECT_NAME}.exe"
 !define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
@@ -51,7 +51,7 @@ Var StartMenuGroup
 !insertmacro MUI_LANGUAGE English
 
 # set desktop as install directory
-InstallDir $PROGRAMFILES64\Karbowanec
+InstallDir $PROGRAMFILES64\Discrete
 CRCCheck on
 BrandingText "@CN_CURRENCY_DISPLAY_NAME@ Wallet"
 ShowInstDetails show
@@ -62,7 +62,7 @@ VIAddVersionKey CompanyName "${COMPANY}"
 VIAddVersionKey CompanyWebsite "${URL}"
 VIAddVersionKey FileVersion "@CN_VERSION@"
 VIAddVersionKey FileDescription "Installer for ${PROJECT_NAME}"
-VIAddVersionKey LegalCopyright "Copyright (C) 2016-2020 ${COMPANY}"
+VIAddVersionKey LegalCopyright "Copyright (C) 2026 ${COMPANY}"
 InstallDirRegKey HKCU "${REGKEY}" Path
 ShowUninstDetails show
 
@@ -72,7 +72,7 @@ Section -Main SEC0000
 	SetOutPath $INSTDIR
 	SetOverwrite on
 	# specify file to go in output path
-	File /r ".\Release\Karbo-wallet-win64-v.${PROJECT_VERSION}\*"
+	File /r ".\Release\Discrete-wallet-win64-v.${PROJECT_VERSION}\*"
 	WriteRegStr HKCU "${REGKEY}\Components" Main 1
 SectionEnd
 
@@ -95,10 +95,10 @@ Section -post SEC0001
     WriteRegStr HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" UninstallString $INSTDIR\uninstall.exe
     WriteRegDWORD HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" NoModify 1
     WriteRegDWORD HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" NoRepair 1
-    WriteRegStr HKCR "karbowanec" "URL Protocol" ""
-    WriteRegStr HKCR "karbowanec" "" "URL:Karbowanec"
-    WriteRegStr HKCR "karbowanec\DefaultIcon" "" $INSTDIR\${PROJECT_NAME}.exe
-    WriteRegStr HKCR "karbowanec\shell\open\command" "" '"$INSTDIR\${PROJECT_NAME}.exe" "%1"'
+    WriteRegStr HKCR "discrete" "URL Protocol" ""
+    WriteRegStr HKCR "discrete" "" "URL:Discrete"
+    WriteRegStr HKCR "discrete\DefaultIcon" "" $INSTDIR\${PROJECT_NAME}.exe
+    WriteRegStr HKCR "discrete\shell\open\command" "" '"$INSTDIR\${PROJECT_NAME}.exe" "%1"'
 
 	ExecWait '"$INSTDIR\vc_redist.x64.exe"  /passive /norestart'
 SectionEnd
@@ -131,12 +131,12 @@ Section -un.post UNSEC0001
     DeleteRegKey HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Uninstall $(^Name).lnk"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\$(^Name).lnk"
-    ; Delete /REBOOTOK "$SMSTARTUP\Karbo Wallet.lnk"
+    ; Delete /REBOOTOK "$SMSTARTUP\Discrete Wallet.lnk"
     DeleteRegValue HKCU "${REGKEY}" StartMenuGroup
     DeleteRegValue HKCU "${REGKEY}" Path
     DeleteRegKey /IfEmpty HKCU "${REGKEY}\Components"
     DeleteRegKey /IfEmpty HKCU "${REGKEY}"
-    DeleteRegKey HKCR "karbowanec"
+    DeleteRegKey HKCR "discrete"
     RmDir /REBOOTOK $SMPROGRAMS\$StartMenuGroup
     RmDir /REBOOTOK $INSTDIR
     Push $R0

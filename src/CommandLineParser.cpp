@@ -39,7 +39,7 @@ CommandLineParser::CommandLineParser(QObject* _parent) : QObject(_parent), m_par
       .arg(CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW),
     tr("blocks"), "0"),
   m_minimized("minimized", tr("Run application in minimized mode")) {
-  m_parser.setApplicationDescription(tr("Karbowanec wallet"));
+  m_parser.setApplicationDescription(tr("Discrete wallet"));
   m_parser.addOption(m_testnetOption);
   m_parser.addOption(m_withoutCheckpointsOption);
   m_parser.addOption(m_p2pBindIpOption);

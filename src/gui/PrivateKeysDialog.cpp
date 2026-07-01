@@ -5,9 +5,10 @@
 #include "PrivateKeysDialog.h"
 #include "ui_privatekeysdialog.h"
 #include <QClipboard>
-#include <Common/Base58.h>
 #include <Common/StringTools.h>
+#include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "CurrencyAdapter.h"
+#include "Settings.h"
 #include "WalletAdapter.h"
 
 namespace WalletGui {
@@ -22,26 +23,32 @@ PrivateKeysDialog::~PrivateKeysDialog() {
 }
 
 void PrivateKeysDialog::walletOpened() {
+  // Discrete has a single secret backing the whole identity (the 32-byte
+  // master seed the mnemonic words encode — see MnemonicSeedDialog). This
+  // shows it as raw hex, for users who'd rather back up/import a hex string
+  // than the word list. It is intentionally short: it is a seed the full
+  // ML-KEM-768/ML-DSA-65 keypairs are deterministically derived from, not
+  // those keys themselves.
+  if (Settings::instance().isTrackingMode()) {
+    m_ui->m_privateKeyEdit->setText(tr("This is a watch-only (tracking) wallet — it has no spend secret to export."));
+    m_ui->m_copyPrivateKeyButton->setEnabled(false);
+    return;
+  }
+
   CryptoNote::AccountKeys keys;
-  WalletAdapter::instance().getAccountKeys(keys);
+  if (!WalletAdapter::instance().getAccountKeys(keys) || keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
+    m_ui->m_privateKeyEdit->setText(tr("Failed to read the wallet's private key."));
+    m_ui->m_copyPrivateKeyButton->setEnabled(false);
+    return;
+  }
 
-  QString privateKeys = QString::fromStdString(Tools::Base58::encode_addr(CurrencyAdapter::instance().getAddressPrefix(),
-    std::string(reinterpret_cast<char*>(&keys), sizeof(keys))));
-
-  m_ui->m_privateKeyEdit->setText(privateKeys);
-//m_ui->m_qrLabel->showQRCode(privateKeys);
-
-  QString spendSecretKey = QString::fromStdString(Common::podToHex(keys.spendSecretKey));
-  QString viewSecretKey = QString::fromStdString(Common::podToHex(keys.viewSecretKey));
-
-  m_ui->m_spendSecretKeyEdit->setText(spendSecretKey);
-  m_ui->m_viewSecretKeyEdit->setText(viewSecretKey);
-
+  QString masterSeedHex = QString::fromStdString(Common::podToHex(keys.spendSecretKey));
+  m_ui->m_privateKeyEdit->setText(masterSeedHex);
+  m_ui->m_copyPrivateKeyButton->setEnabled(true);
 }
 
 void PrivateKeysDialog::walletClosed() {
   m_ui->m_privateKeyEdit->clear();
-//m_ui->m_qrLabel->clear();
 }
 
 void PrivateKeysDialog::copyKey() {

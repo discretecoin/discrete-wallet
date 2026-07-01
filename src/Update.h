@@ -11,8 +11,10 @@
 #include <QNetworkReply>
 #include <QUrl>
 
-const static QString KARBO_UPDATE_URL   = "https://api.github.com/repos/karbovanets/karbowanecwallet/tags";
-const static QString KARBO_DOWNLOAD_URL = "https://github.com/Karbovanets/karbowanecwallet/releases/";
+// Update checks are disabled at the call site in main.cpp until this repo
+// actually publishes tagged releases there.
+const static QString DISCRETE_UPDATE_URL   = "https://api.github.com/repos/aivve/DiscreteWallet/tags";
+const static QString DISCRETE_DOWNLOAD_URL = "https://github.com/aivve/DiscreteWallet/releases/";
 
 class Updater : public QObject
 {

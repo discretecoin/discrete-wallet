@@ -37,8 +37,6 @@ public:
   static NodeAdapter& instance();
 
   quintptr getPeerCount();
-  std::string convertPaymentId(const QString& _payment_id_string) const;
-  QString extractPaymentId(const std::string& _extra) const;
   CryptoNote::IWalletLegacy* createWallet() const;
 
   bool init();
@@ -57,15 +55,14 @@ public:
   quint64 getWhitePeerlistSize();
   quint64 getGreyPeerlistSize();
   quint64 getMinimalFee() const;
-  quint64 getNodeFeeAmount() const;
-  QString getNodeFeeAddress() const;
   uint8_t getCurrentBlockMajorVersion();
   quint64 getAlreadyGeneratedCoins();
   std::vector<CryptoNote::p2pConnection> getConnections();
   CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo();
-  bool getBlockTemplate(CryptoNote::Block& b, const CryptoNote::AccountKeys& acc, const CryptoNote::BinaryArray& extraNonce, CryptoNote::difficulty_type& difficulty, uint32_t& height);
-  bool handleBlockFound(CryptoNote::Block& b);
-  bool getBlockLongHash(Crypto::cn_context &context, const CryptoNote::Block& block, Crypto::Hash& res);
+  bool startMining(const CryptoPQ::KemPublicKey& viewPub, const CryptoPQ::DsaPublicKey& spendPub, const CryptoPQ::DsaSecretKey& spendSk, size_t threadCount);
+  bool stopMining();
+  bool isMining();
+  quint64 getHashRate();
   NodeType getNodeType() const;
   bool isOffline();
 
@@ -78,8 +75,10 @@ public:
   CryptoNote::INode* getNode();
   System::Dispatcher& getDispatcher();
 
-  void getAccountNumber(const std::string& address, std::string& accountNumber, const std::function<void(std::error_code)>& callback);
-  void resolveAccountNumber(const std::string& accountNumber, std::string& address, const std::function<void(std::error_code)>& callback);
+  void getPqAccount(const std::string& viewPubHex, const std::string& spendPubHex, bool& registered,
+                    uint32_t& blockHeight, uint32_t& txIndex, const std::function<void(std::error_code)>& callback);
+  void resolvePqAccount(uint32_t blockHeight, uint32_t txIndex, bool& found,
+                        std::string& viewPubHex, std::string& spendPubHex, const std::function<void(std::error_code)>& callback);
 
 private:
   Node* m_node;

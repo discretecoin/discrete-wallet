@@ -37,7 +37,6 @@ protected:
 
 signals:
     void amountValueChangedSignal();
-    void insertPaymentIDSignal(QString _paymentid);
 
 private:
   QScopedPointer<Ui::TransferFrame> m_ui;
@@ -45,6 +44,8 @@ private:
   int m_addressInputTimer;
   int m_accountNumberInputTimer;
   void onAliasFound(const QString& _name, const QString& _address);
+  // Resolves an H-I-C or H-I-T-C account number to its registered PQ address
+  // for display, mirroring the canonical resolution in Wallet/PqRecipient.h.
   void resolveAccountNumber(const QString& _input);
   static bool looksLikeAccountNumber(const QString& _text);
 

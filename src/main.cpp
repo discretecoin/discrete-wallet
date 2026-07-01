@@ -96,6 +96,14 @@ int main(int argc, char* argv[]) {
   auto* style = new KarboStyle(&app);
   style->setThemeJsonPath(QStringLiteral(":/themes/qlementine-dark.json"));
   QApplication::setStyle(style);
+  // QApplication::setStyle() doesn't push the style's palette onto
+  // QApplication::palette() by itself — widgets only pick up the theme's
+  // colors once Qt lazily polishes each of them individually. Any label
+  // whose text is set from static .ui content before that polish pass
+  // catches up (e.g. AccountFrame's captions, reparented into a QToolBar)
+  // keeps rendering with the pre-theme default palette: dark text on the
+  // theme's dark background. Set it explicitly, immediately.
+  QApplication::setPalette(style->standardPalette());
 #endif
 
   if (PaymentServer::ipcSendCommandLine())
@@ -113,11 +121,11 @@ int main(int argc, char* argv[]) {
   }
 
   //Create registry entries for URL execution
-  QSettings karbowanecKey("HKEY_CLASSES_ROOT\\karbowanec", QSettings::NativeFormat);
-  karbowanecKey.setValue(".", "Karbo Wallet");
-  karbowanecKey.setValue("URL Protocol", "");
-  QSettings karbowanecOpenKey("HKEY_CLASSES_ROOT\\karbowanec\\shell\\open\\command", QSettings::NativeFormat);
-  karbowanecOpenKey.setValue(".", "\"" + QCoreApplication::applicationFilePath().replace("/", "\\") + "\" \"%1\"");
+  QSettings discreteKey("HKEY_CLASSES_ROOT\\discrete", QSettings::NativeFormat);
+  discreteKey.setValue(".", "Discrete Wallet");
+  discreteKey.setValue("URL Protocol", "");
+  QSettings discreteOpenKey("HKEY_CLASSES_ROOT\\discrete\\shell\\open\\command", QSettings::NativeFormat);
+  discreteOpenKey.setValue(".", "\"" + QCoreApplication::applicationFilePath().replace("/", "\\") + "\" \"%1\"");
 #endif
 
 #if defined(Q_OS_LINUX)
@@ -125,7 +133,7 @@ int main(int argc, char* argv[]) {
   QProcess exec;
 
   //as root
-  args << "-c" << "printf '[Desktop Entry]\\nName = Karbo URL Handler\\nGenericName = Karbo\\nComment = Handle URL Sheme karbowanec://\\nExec = " + QCoreApplication::applicationFilePath() + " %%u\\nTerminal = false\\nType = Application\\nMimeType = x-scheme-handler/karbowanec;\\nIcon = Karbo-Wallet' | tee /usr/share/applications/karbowanec-handler.desktop";
+  args << "-c" << "printf '[Desktop Entry]\\nName = Discrete URL Handler\\nGenericName = Discrete\\nComment = Handle URL Sheme discrete://\\nExec = " + QCoreApplication::applicationFilePath() + " %%u\\nTerminal = false\\nType = Application\\nMimeType = x-scheme-handler/discrete;\\nIcon = Discrete-Wallet' | tee /usr/share/applications/discrete-handler.desktop";
   exec.start("/bin/sh", args);
   exec.waitForFinished();
 
@@ -186,8 +194,11 @@ int main(int argc, char* argv[]) {
   splash->deleteLater();
   splash = nullptr;
 
-  Updater *d = new Updater();
-  d->checkForUpdate();
+  // Update checks are disabled: DISCRETE_UPDATE_URL/DISCRETE_DOWNLOAD_URL in
+  // Update.h point at this repo, but it doesn't publish tagged releases yet.
+  // Re-enable once it does.
+  // Updater *d = new Updater();
+  // d->checkForUpdate();
 
   MainWindow::instance().show();
   QString lastWallet = Settings::instance().getWalletFile();
