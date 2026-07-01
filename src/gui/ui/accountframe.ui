@@ -174,7 +174,7 @@
       <item>
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>Address</string>
+         <string>ADDRESS</string>
         </property>
        </widget>
       </item>

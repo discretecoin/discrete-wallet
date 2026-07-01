@@ -116,6 +116,7 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 
   QFont addressFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   addressFont.setPixelSize(ADDRESS_FONT_SIZE);
+  addressFont.setBold(true);
 
   QFont accountNumberFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   accountNumberFont.setPixelSize(ACCOUNT_NUMBER_VALUE_FONT_SIZE);
@@ -168,8 +169,11 @@ void AccountFrame::applyFramePalette() {
   // These labels sit in cards whose stylesheet fill can otherwise leave the
   // text resolving against a low-contrast palette; set colors explicitly.
   // Account number is the hero — brand mint; captions muted; address muted.
-  m_ui->m_accountNumberTitleLabel->setStyleSheet(QStringLiteral("color:#7f8b94; font-size:10px; letter-spacing:1px;"));
-  m_ui->label->setStyleSheet(QStringLiteral("color:#7f8b94; font-size:11px;"));
+  // The "ADDRESS" caption uses the same muted uppercase style as the
+  // "ACCOUNT NUMBER" / "AVAILABLE" captions.
+  const QString captionCss = QStringLiteral("color:#7f8b94; font-size:10px; letter-spacing:1px;");
+  m_ui->m_accountNumberTitleLabel->setStyleSheet(captionCss);
+  m_ui->label->setStyleSheet(captionCss);
   m_ui->m_accountNumberLabel->setStyleSheet(QStringLiteral("color:#5FE29F;"));
   m_ui->m_addressLabel->setStyleSheet(QStringLiteral("color:#9AA7B2;"));
 }
