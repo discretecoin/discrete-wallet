@@ -14,6 +14,8 @@
 #include <QSplashScreen>
 #include <QSettings>
 #include <QStyleFactory>
+#include <QPalette>
+#include <QColor>
 
 #ifdef KARBO_USE_QLEMENTINE
 #include <oclero/qlementine.hpp>
@@ -103,12 +105,17 @@ int main(int argc, char* argv[]) {
   // catches up (e.g. AccountFrame's captions, reparented into a QToolBar)
   // keeps rendering with the pre-theme default palette: dark text on the
   // theme's dark background. Set it explicitly, immediately.
-  QApplication::setPalette(style->standardPalette());
-  // Qlementine paints tooltips via the widget palette on Windows (its custom
-  // rounded-tooltip path is macOS-only), which leaves them dark-on-dark. A
-  // global QToolTip stylesheet is the reliable cross-platform override.
-  app.setStyleSheet(app.styleSheet() +
-    QStringLiteral("\nQToolTip { color:#F5F7F8; background-color:#232629; border:1px solid #3A4750; padding:4px 6px; }"));
+  // Qlementine paints the tooltip background via KarboStyle's colour overrides
+  // (above), but the tooltip *text* is drawn by the QLabel using the palette's
+  // ToolTipText role, which was dark-on-dark. Fix it in the palette rather than
+  // with an app-wide QToolTip stylesheet: setting a global stylesheet forces a
+  // re-polish of every widget, and Qlementine's combobox filter recurses during
+  // that re-polish (QComboBox::view() rebuild ↔ event filter), overflowing the
+  // stack on launch.
+  QPalette pal = style->standardPalette();
+  pal.setColor(QPalette::ToolTipBase, QColor(0x23, 0x26, 0x29));
+  pal.setColor(QPalette::ToolTipText, QColor(0xF5, 0xF7, 0xF8));
+  QApplication::setPalette(pal);
 #endif
 
   if (PaymentServer::ipcSendCommandLine())
