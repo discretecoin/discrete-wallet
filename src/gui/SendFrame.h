@@ -54,7 +54,6 @@ private:
   Q_SLOT void feeValueChanged(double _value);
   Q_SLOT void amountValueChanged();
   Q_SLOT void sendClicked();
-  Q_SLOT void sendAllClicked();
   Q_SLOT void advancedClicked(bool _show);
   Q_SLOT void feeOverrideToggled(bool _override);
 

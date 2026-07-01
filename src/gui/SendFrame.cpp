@@ -99,17 +99,14 @@ void SendFrame::addRecipientClicked() {
   m_transfers.append(newTransfer);
   if (m_transfers.size() == 1) {
     newTransfer->disableRemoveButton(true);
-    m_ui->m_sendAllButton->setEnabled(true);
   } else {
     m_transfers[0]->disableRemoveButton(false);
-    m_ui->m_sendAllButton->setEnabled(false);
   }
 
   connect(newTransfer, &TransferFrame::destroyed, [this](QObject* _obj) {
     m_transfers.removeOne(static_cast<TransferFrame*>(_obj));
     if (m_transfers.size() == 1) {
       m_transfers[0]->disableRemoveButton(true);
-      m_ui->m_sendAllButton->setEnabled(true);
     }
   });
 
@@ -124,8 +121,6 @@ double SendFrame::getMinimalFee() {
 }
 
 void SendFrame::clearAllClicked() {
-  m_ui->m_sendAllButton->setEnabled(true);
-
   Q_FOREACH (TransferFrame* transfer, m_transfers) {
     transfer->close();
   }
@@ -135,7 +130,6 @@ void SendFrame::clearAllClicked() {
 }
 
 void SendFrame::reset() {
-  m_ui->m_sendAllButton->setEnabled(true);
   amountValueChanged();
 }
 
@@ -353,37 +347,6 @@ void SendFrame::advancedClicked(bool _show) {
   } else {
     m_ui->m_advancedWidget->hide();
   }
-}
-
-void SendFrame::sendAllClicked() {
-  quint64 actualBalance = WalletAdapter::instance().getActualBalance();
-  if (actualBalance < NodeAdapter::instance().getMinimalFee()) {
-    QCoreApplication::postEvent(
-      &MainWindow::instance(),
-      new ShowMessageEvent(tr("Insufficient balance."), QtCriticalMsg));
-    return;
-  }
-
-  // "Send all" must leave room for the fee, but the exact (size-based) fee is
-  // only known once the wallet builds the tx. Reserve a conservative estimate
-  // from the number of unlocked outputs it will spend — each PQ input is ~5 KB
-  // and the floor is ~1 atomic unit per 4 KB — so the wallet's own auto-computed
-  // fee (see sendClicked) fits and at most a tiny change is left over. A manual
-  // override, if set, is used as-is.
-  quint64 fee;
-  if (m_ui->m_manualFeeCheckBox->isChecked()) {
-    fee = getFee();
-  } else {
-    quint64 inputs = WalletAdapter::instance().getUnlockedOutputsCount();
-    if (inputs == 0) {
-      inputs = 1;
-    }
-    const quint64 estimatedSize = inputs * 5400ULL + 2000ULL; // inputs + one output + overhead
-    fee = (estimatedSize + 3999ULL) / 4000ULL + 2ULL;         // ceil(size/4KB) + PqSender's +1 + safety
-  }
-
-  quint64 amount = actualBalance > fee ? actualBalance - fee : 0;
-  m_transfers[0]->setAmount(amount);
 }
 
 }

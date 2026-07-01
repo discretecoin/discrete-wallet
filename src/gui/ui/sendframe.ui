@@ -68,6 +68,52 @@
     </widget>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="feeRowLayout">
+     <item>
+      <widget class="QLabel" name="label_3">
+       <property name="minimumSize">
+        <size>
+         <width>75</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>100</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>Fee:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="m_feeEstimateLabel">
+       <property name="toolTip">
+        <string>Estimated network fee. Discrete's fee is based on transaction size; the exact amount is set when the transaction is created.</string>
+       </property>
+       <property name="text">
+        <string notr="true">≈ 0.00 XDS</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="feeRowSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>100</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QFrame" name="m_advancedWidget">
      <layout class="QGridLayout" name="advancedGridLayout">
       <property name="leftMargin">
@@ -80,36 +126,14 @@
        <number>0</number>
       </property>
       <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="minimumSize">
-         <size>
-          <width>75</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>100</width>
-          <height>16777215</height>
-         </size>
-        </property>
+       <widget class="QCheckBox" name="m_manualFeeCheckBox">
         <property name="text">
-         <string>Fee:</string>
+         <string>Manual fee override:</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QLabel" name="m_feeEstimateLabel">
-        <property name="toolTip">
-         <string>Estimated network fee. Discrete's fee is based on transaction size; the exact amount is set when the transaction is created.</string>
-        </property>
-        <property name="text">
-         <string notr="true">≈ 0.00 XDS</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="3">
-       <spacer name="horizontalSpacer">
+      <item row="0" column="2">
+       <spacer name="advancedSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
@@ -124,14 +148,7 @@
         </property>
        </spacer>
       </item>
-      <item row="0" column="4">
-       <widget class="QCheckBox" name="m_manualFeeCheckBox">
-        <property name="text">
-         <string>Manual fee override:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="5">
+      <item row="0" column="1">
        <widget class="QDoubleSpinBox" name="m_feeSpin">
         <property name="enabled">
          <bool>false</bool>
@@ -202,29 +219,6 @@
        </property>
        <property name="checkable">
         <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="m_sendAllButton">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>30</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>30</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>Send All</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../resources.qrc">
-         <normaloff>:/icons/sweep</normaloff>:/icons/sweep</iconset>
        </property>
       </widget>
      </item>
@@ -331,7 +325,6 @@
   <tabstop>m_transfersScrollarea</tabstop>
   <tabstop>m_manualFeeCheckBox</tabstop>
   <tabstop>m_feeSpin</tabstop>
-  <tabstop>m_sendAllButton</tabstop>
   <tabstop>m_clearAllButton</tabstop>
   <tabstop>m_addRecipientButton</tabstop>
  </tabstops>
@@ -436,22 +429,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_sendAllButton</sender>
-   <signal>clicked()</signal>
-   <receiver>SendFrame</receiver>
-   <slot>sendAllClicked()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>154</x>
-     <y>566</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>432</x>
-     <y>294</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_manualFeeCheckBox</sender>
    <signal>toggled(bool)</signal>
    <receiver>SendFrame</receiver>
@@ -470,7 +447,6 @@
  </connections>
  <slots>
   <slot>sendClicked()</slot>
-  <slot>sendAllClicked()</slot>
   <slot>clearAllClicked()</slot>
   <slot>addRecipientClicked()</slot>
   <slot>feeValueChanged(double)</slot>
