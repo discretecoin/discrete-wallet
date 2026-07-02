@@ -11,6 +11,7 @@
 #include "CurrencyAdapter.h"
 #include "CryptoNoteWalletConfig.h"
 #include "LoggerAdapter.h"
+#include "Settings.h"
 
 namespace WalletGui {
 
@@ -19,7 +20,14 @@ CurrencyAdapter& CurrencyAdapter::instance() {
   return inst;
 }
 
-CurrencyAdapter::CurrencyAdapter() : m_currency(CryptoNote::CurrencyBuilder(LoggerAdapter::instance().getLoggerManager()).currency()) {
+CurrencyAdapter::CurrencyAdapter() : m_currency(
+    CryptoNote::CurrencyBuilder(LoggerAdapter::instance().getLoggerManager())
+      // Select mainnet vs. testnet at build time. This drives the genesis block
+      // (network identity), the on-disk blockchain/pool filenames, and the
+      // bech32m address HRP (disc / tdisc). The command line is parsed before
+      // this singleton is first constructed (see main.cpp), so the flag is set.
+      .testnet(Settings::instance().isTestnet())
+      .currency()) {
 }
 
 CurrencyAdapter::~CurrencyAdapter() {

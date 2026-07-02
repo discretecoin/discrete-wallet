@@ -98,7 +98,11 @@ void Settings::load() {
 }
 
 bool Settings::isTestnet() const {
-  Q_ASSERT(m_cmdLineParser != nullptr);
+  // Queried during CurrencyAdapter construction; if that ever happens before
+  // the parser is installed, treat it as mainnet rather than crashing.
+  if (m_cmdLineParser == nullptr) {
+    return false;
+  }
   return m_cmdLineParser->hasTestnetOption();
 }
 

@@ -103,6 +103,16 @@ int main(int argc, char* argv[]) {
   QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
   QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
   QApplication app(argc, argv);
+
+  // Parse the command line before anything touches CurrencyAdapter: the very
+  // first CurrencyAdapter::instance() call (below, via getCurrencyName) builds
+  // and caches the Currency, and that build reads Settings::isTestnet() to pick
+  // mainnet vs. testnet (genesis, DB filenames, and the bech32m address HRP).
+  // Settings::isTestnet() in turn needs the command-line parser installed.
+  CommandLineParser cmdLineParser(nullptr);
+  Settings::instance().setCommandLineParser(&cmdLineParser);
+  bool cmdLineParseResult = cmdLineParser.process(app.arguments());
+
   app.setApplicationName(CurrencyAdapter::instance().getCurrencyName() + "wallet");
   app.setApplicationVersion(Settings::instance().getVersion());
   app.setQuitOnLastWindowClosed(false);
@@ -113,9 +123,7 @@ int main(int argc, char* argv[]) {
 #endif
 #endif
 
-  CommandLineParser cmdLineParser(nullptr);
-  Settings::instance().setCommandLineParser(&cmdLineParser);
-  bool cmdLineParseResult = cmdLineParser.process(app.arguments());
+  // load() reads <appName>.cfg, so it must run after setApplicationName above.
   Settings::instance().load();
 
   //Translator must be created before the application's widgets.
