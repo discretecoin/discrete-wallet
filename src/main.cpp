@@ -124,6 +124,13 @@ int main(int argc, char* argv[]) {
   auto* style = new KarboStyle(&app);
   style->setThemeJsonPath(QStringLiteral(":/themes/qlementine-dark.json"));
   QApplication::setStyle(style);
+  // Qlementine's polish(QApplication*) enables menu fade + animation. On this
+  // Qt/Windows build the fading, translucent, frameless menu popup leaves a
+  // ghost of the just-closed context menu on screen (and flickers on click).
+  // Disable those menu effects (after setStyle, which is what turned them on)
+  // so every context menu closes instantly and cleanly.
+  QApplication::setEffectEnabled(Qt::UI_FadeMenu, false);
+  QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
   // Note: do NOT call QApplication::setPalette() here. Qlementine already makes
   // its theme palette the application palette; explicitly re-setting it marks
   // the palette as user-set, which changes how palette-change events propagate
