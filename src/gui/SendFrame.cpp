@@ -142,27 +142,18 @@ void SendFrame::amountValueChanged() {
   updateFeeEstimate();
 }
 
-// Discrete's fee is size-based (~1 atomic unit per 4 KB, see sendClicked), so
-// the exact fee is only known once the wallet selects inputs and builds the tx.
-// Show an approximate estimate from the recipient count; a manual override, if
-// set, is shown verbatim.
+// Discrete's fee is a fixed, size-based floor with no fee market, so there is
+// nothing for the user to choose: show a plain "automatic" note by default and
+// only display a concrete amount when the user sets a manual override. The
+// exact fee is computed by the wallet at send time (see sendClicked).
 void SendFrame::updateFeeEstimate() {
-  quint64 feeAtomic;
-  bool manual = m_ui->m_manualFeeCheckBox->isChecked();
-  if (manual) {
-    feeAtomic = CurrencyAdapter::instance().parseAmount(m_ui->m_feeSpin->cleanText());
+  if (m_ui->m_manualFeeCheckBox->isChecked()) {
+    const quint64 feeAtomic = CurrencyAdapter::instance().parseAmount(m_ui->m_feeSpin->cleanText());
+    const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
+    m_ui->m_feeEstimateLabel->setText(CurrencyAdapter::instance().formatAmount(feeAtomic) + " " + ticker);
   } else {
-    // outputs = recipients + 1 change; assume ~2 inputs (typical). Each PQ
-    // input ~5.4 KB, each output ~1.2 KB, ~0.6 KB overhead; floor ~1 atomic/4 KB.
-    const quint64 outputs = static_cast<quint64>(m_transfers.size()) + 1;
-    const quint64 inputs = 2;
-    const quint64 size = inputs * 5400ULL + outputs * 1200ULL + 600ULL;
-    feeAtomic = (size + 3999ULL) / 4000ULL + 1ULL;
+    m_ui->m_feeEstimateLabel->setText(tr("Automatic (based on size)"));
   }
-  const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
-  const QString text = (manual ? QString() : QStringLiteral("≈ ")) +
-    CurrencyAdapter::instance().formatAmount(feeAtomic) + " " + ticker;
-  m_ui->m_feeEstimateLabel->setText(text);
 }
 
 void SendFrame::openUriClicked() {

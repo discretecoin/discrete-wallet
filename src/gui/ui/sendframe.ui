@@ -91,10 +91,10 @@
      <item>
       <widget class="QLabel" name="m_feeEstimateLabel">
        <property name="toolTip">
-        <string>Estimated network fee. Discrete's fee is based on transaction size; the exact amount is set when the transaction is created.</string>
+        <string>Discrete's network fee is a fixed, size-based amount set automatically when the transaction is created (~0.01 XDS per 4 KB). The exact fee is recorded in your transaction history.</string>
        </property>
        <property name="text">
-        <string notr="true">≈ 0.00 XDS</string>
+        <string>Automatic (based on size)</string>
        </property>
       </widget>
      </item>
