@@ -28,7 +28,7 @@ namespace WalletGui {
 namespace {
 
 constexpr int CAPTION_FONT_SIZE = 10;
-constexpr int ADDRESS_FONT_SIZE = 13;
+constexpr int ADDRESS_FONT_SIZE = 15;
 constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
 // PQ addresses are ~3000-character bech32m strings — far too long to display
 // in full. Elide to a short prefix/suffix, like other crypto wallets; the full
