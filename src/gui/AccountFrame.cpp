@@ -128,13 +128,21 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_addressLabel->installEventFilter(this);
   m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
-    QMenu menu(this);
-    QAction* copyAction = menu.addAction(tr("Copy address"));
-    copyAction->setEnabled(!WalletAdapter::instance().getAddress().isEmpty());
-
-    if (menu.exec(m_ui->m_addressLabel->mapToGlobal(_pos)) == copyAction) {
-      QApplication::clipboard()->setText(getCopyableAddressText());
+    if (WalletAdapter::instance().getAddress().isEmpty()) {
+      return;
     }
+    // Non-blocking popup() with WA_DeleteOnClose, not a stack QMenu + exec():
+    // Qlementine fades menus out on close, and destroying the QMenu the instant
+    // exec() returns (stack unwind) orphans the fading popup, leaving a ghost
+    // "Copy address" box on screen. Letting the menu delete itself after it has
+    // finished closing avoids that.
+    QMenu* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    QAction* copyAction = menu->addAction(tr("Copy address"));
+    connect(copyAction, &QAction::triggered, this, []() {
+      QApplication::clipboard()->setText(getCopyableAddressText());
+    });
+    menu->popup(m_ui->m_addressLabel->mapToGlobal(_pos));
   });
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
