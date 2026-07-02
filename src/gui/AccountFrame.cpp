@@ -8,6 +8,7 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QMenu>
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
@@ -125,16 +126,20 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_addressLabel->setWordWrap(false);
   m_ui->m_addressLabel->setTextFormat(Qt::PlainText);
   m_ui->m_addressLabel->installEventFilter(this);
-  // Right-click copies the (full) address directly. The previous single-item
-  // "Copy address" context menu produced the same result in two clicks, but the
-  // Qlementine-styled translucent menu popup left a ghost box on screen after
-  // closing on Windows. Copying on right-click avoids the menu entirely; the
-  // inline copy button and Ctrl+C remain as the other ways to copy.
+  // Right-click "Copy address" menu. Use ONE persistent QMenu reused on every
+  // right-click (the same pattern as TransactionsFrame): a menu created and
+  // destroyed per right-click leaves a ghost popup under Qlementine on Windows.
+  m_addressCopyMenu = new QMenu(this);
+  QAction* copyAddressAction = m_addressCopyMenu->addAction(tr("Copy address"));
+  connect(copyAddressAction, &QAction::triggered, this, []() {
+    QApplication::clipboard()->setText(getCopyableAddressText());
+  });
   m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint&) {
-    if (!WalletAdapter::instance().getAddress().isEmpty()) {
-      QApplication::clipboard()->setText(getCopyableAddressText());
+  connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
+    if (WalletAdapter::instance().getAddress().isEmpty()) {
+      return;
     }
+    m_addressCopyMenu->exec(m_ui->m_addressLabel->mapToGlobal(_pos));
   });
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
