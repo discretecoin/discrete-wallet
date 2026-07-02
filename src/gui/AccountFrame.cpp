@@ -8,7 +8,6 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QKeySequence>
-#include <QMenu>
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
@@ -126,23 +125,16 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_addressLabel->setWordWrap(false);
   m_ui->m_addressLabel->setTextFormat(Qt::PlainText);
   m_ui->m_addressLabel->installEventFilter(this);
+  // Right-click copies the (full) address directly. The previous single-item
+  // "Copy address" context menu produced the same result in two clicks, but the
+  // Qlementine-styled translucent menu popup left a ghost box on screen after
+  // closing on Windows. Copying on right-click avoids the menu entirely; the
+  // inline copy button and Ctrl+C remain as the other ways to copy.
   m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
-    if (WalletAdapter::instance().getAddress().isEmpty()) {
-      return;
-    }
-    // Non-blocking popup() with WA_DeleteOnClose, not a stack QMenu + exec():
-    // Qlementine fades menus out on close, and destroying the QMenu the instant
-    // exec() returns (stack unwind) orphans the fading popup, leaving a ghost
-    // "Copy address" box on screen. Letting the menu delete itself after it has
-    // finished closing avoids that.
-    QMenu* menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-    QAction* copyAction = menu->addAction(tr("Copy address"));
-    connect(copyAction, &QAction::triggered, this, []() {
+  connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint&) {
+    if (!WalletAdapter::instance().getAddress().isEmpty()) {
       QApplication::clipboard()->setText(getCopyableAddressText());
-    });
-    menu->popup(m_ui->m_addressLabel->mapToGlobal(_pos));
+    }
   });
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
