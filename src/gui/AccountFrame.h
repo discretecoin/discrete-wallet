@@ -30,10 +30,6 @@ protected:
 
 private:
   QScopedPointer<Ui::AccountFrame> m_ui;
-  // Persistent context menu for the address label. Created once and reused,
-  // like TransactionsFrame's — a menu created/destroyed per right-click leaves
-  // a ghost popup under Qlementine on Windows.
-  QMenu* m_addressCopyMenu;
   QString m_accountNumber;
   bool m_accountNumberResolved;
   bool m_accountNumberFetchInProgress;

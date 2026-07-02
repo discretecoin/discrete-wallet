@@ -53,10 +53,12 @@ QString formatDisplayAddress(const QString& address) {
 
 // Primary balance (Available): a small muted caption above a large value.
 QString formatPrimaryBalance(const QString& title, const QString& amount, const QString& ticker) {
+  // Explicit colors throughout so the amount doesn't depend on the inherited
+  // palette text color (the value is the bright #F5F7F8, captions muted).
   return QString(
     "<div style=\"line-height:1.15;\">"
       "<span style=\"font-size:%1px; color:#7f8b94; letter-spacing:1px;\">%2</span><br>"
-      "<span style=\"font-size:22px; font-weight:600;\">%3</span>"
+      "<span style=\"font-size:22px; font-weight:600; color:#F5F7F8;\">%3</span>"
       "<span style=\"font-size:12px; color:#7f8b94;\"> %4</span>"
     "</div>")
     .arg(CAPTION_FONT_SIZE)
@@ -69,7 +71,7 @@ QString formatPrimaryBalance(const QString& title, const QString& amount, const 
 QString formatSecondaryBalance(const QString& title, const QString& amount) {
   return QString(
     "<span style=\"font-size:12px; color:#8a95a0;\">%1 </span>"
-    "<span style=\"font-size:12px;\">%2</span>")
+    "<span style=\"font-size:12px; color:#d9e0e5;\">%2</span>")
     .arg(title.toHtmlEscaped())
     .arg(amount.toHtmlEscaped());
 }
@@ -126,20 +128,16 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_addressLabel->setWordWrap(false);
   m_ui->m_addressLabel->setTextFormat(Qt::PlainText);
   m_ui->m_addressLabel->installEventFilter(this);
-  // Right-click "Copy address" menu. Use ONE persistent QMenu reused on every
-  // right-click (the same pattern as TransactionsFrame): a menu created and
-  // destroyed per right-click leaves a ghost popup under Qlementine on Windows.
-  m_addressCopyMenu = new QMenu(this);
-  QAction* copyAddressAction = m_addressCopyMenu->addAction(tr("Copy address"));
-  connect(copyAddressAction, &QAction::triggered, this, []() {
-    QApplication::clipboard()->setText(getCopyableAddressText());
-  });
+  // Right-click "Copy address" menu — same pattern as the original Karbo wallet.
   m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
-    if (WalletAdapter::instance().getAddress().isEmpty()) {
-      return;
+    QMenu menu(this);
+    QAction* copyAction = menu.addAction(tr("Copy address"));
+    copyAction->setEnabled(!WalletAdapter::instance().getAddress().isEmpty());
+
+    if (menu.exec(m_ui->m_addressLabel->mapToGlobal(_pos)) == copyAction) {
+      QApplication::clipboard()->setText(getCopyableAddressText());
     }
-    m_addressCopyMenu->exec(m_ui->m_addressLabel->mapToGlobal(_pos));
   });
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);

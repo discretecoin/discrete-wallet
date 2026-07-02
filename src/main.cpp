@@ -38,23 +38,11 @@ public:
     return fg;
   }
 
-  // Qlementine's theme palette sets ToolTipText to secondaryColorForeground
-  // (near-black), assuming a light ToolTipBase — but PE_PanelTipLabel paints
-  // the tooltip background dark via toolTipBackgroundColor(), giving dark text
-  // on a dark background.
-  void polish(QPalette& palette) override {
-    QlementineStyle::polish(palette);
-    palette.setColor(QPalette::ToolTipBase, QColor(35, 38, 41));
-    palette.setColor(QPalette::ToolTipText, QColor(0xF5, 0xF7, 0xF8));
-  }
-
-  // The palette override above isn't reliably picked up by the tooltip widget
-  // on Windows (Qlementine only special-cases QTipLabel on non-Windows, and the
-  // app palette ends up dark-on-dark regardless). Fix the actual tooltip widget
-  // directly when the style polishes it. Targeted to QTipLabel, so it doesn't
-  // trigger the global re-polish that an app-wide QToolTip stylesheet would
-  // (which recurses through Qlementine's combobox filter and overflows the
-  // stack on launch).
+  // The tooltip text is drawn by the QLabel from its ToolTipText palette role,
+  // which the mint theme leaves near-black (dark on the dark tooltip). Fix the
+  // tooltip widget directly when the style polishes it. This is scoped to the
+  // QTipLabel only — it does NOT touch the application palette, so it can't
+  // disturb menu/popup rendering the way a global setPalette() does.
   void polish(QWidget* w) override {
     QlementineStyle::polish(w);
     if (w && w->inherits("QTipLabel")) {
@@ -136,24 +124,12 @@ int main(int argc, char* argv[]) {
   auto* style = new KarboStyle(&app);
   style->setThemeJsonPath(QStringLiteral(":/themes/qlementine-dark.json"));
   QApplication::setStyle(style);
-  // QApplication::setStyle() doesn't push the style's palette onto
-  // QApplication::palette() by itself — widgets only pick up the theme's
-  // colors once Qt lazily polishes each of them individually. Any label
-  // whose text is set from static .ui content before that polish pass
-  // catches up (e.g. AccountFrame's captions, reparented into a QToolBar)
-  // keeps rendering with the pre-theme default palette: dark text on the
-  // theme's dark background. Set it explicitly, immediately.
-  // Qlementine paints the tooltip background via KarboStyle's colour overrides
-  // (above), but the tooltip *text* is drawn by the QLabel using the palette's
-  // ToolTipText role, which was dark-on-dark. Fix it in the palette rather than
-  // with an app-wide QToolTip stylesheet: setting a global stylesheet forces a
-  // re-polish of every widget, and Qlementine's combobox filter recurses during
-  // that re-polish (QComboBox::view() rebuild ↔ event filter), overflowing the
-  // stack on launch.
-  QPalette pal = style->standardPalette();
-  pal.setColor(QPalette::ToolTipBase, QColor(0x23, 0x26, 0x29));
-  pal.setColor(QPalette::ToolTipText, QColor(0xF5, 0xF7, 0xF8));
-  QApplication::setPalette(pal);
+  // Note: do NOT call QApplication::setPalette() here. Qlementine already makes
+  // its theme palette the application palette; explicitly re-setting it marks
+  // the palette as user-set, which changes how palette-change events propagate
+  // and made Qlementine's context-menu popups flicker/ghost on Windows. The
+  // account-frame text colors are set explicitly in AccountFrame instead, and
+  // tooltip text is fixed per-widget in KarboStyle::polish (above).
 #endif
 
   if (PaymentServer::ipcSendCommandLine())
