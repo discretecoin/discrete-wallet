@@ -147,6 +147,7 @@ private:
   QString walletErrorMessage(int _error_code);
   void runWalletRpc();
   void stopWalletRpc();
+  void doRegisterAccountNumber(AccountRegistrationMode _mode);
 
   static void renameFile(const QString& _old_name, const QString& _new_name);
   Q_SLOT void updateBlockStatusText();

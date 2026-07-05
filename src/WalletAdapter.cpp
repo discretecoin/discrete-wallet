@@ -14,7 +14,9 @@
 #include <QVector>
 #include <QDebug>
 
+#include <chrono>
 #include <future>
+#include <thread>
 
 #include <boost/filesystem.hpp>
 
@@ -51,6 +53,7 @@ const quint32 MSECS_IN_MINUTE = 60 * 1000;
 
 const quint32 LAST_BLOCK_INFO_UPDATING_INTERVAL = 1 * MSECS_IN_MINUTE;
 const quint32 LAST_BLOCK_INFO_WARNING_INTERVAL = 1 * MSECS_IN_HOUR;
+constexpr std::chrono::seconds ACCOUNT_REGISTRATION_RELAY_TIMEOUT(60);
 
 WalletAdapter& WalletAdapter::instance() {
   static WalletAdapter inst;
@@ -435,8 +438,21 @@ bool WalletAdapter::getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::Ds
 }
 
 void WalletAdapter::registerAccountNumber(AccountRegistrationMode _mode) {
-  Q_CHECK_PTR(m_wallet);
+  if (m_wallet == nullptr) {
+    Q_EMIT accountRegistrationCompletedSignal(
+      static_cast<int>(CryptoNote::error::WalletErrorCodes::NOT_INITIALIZED),
+      tr("Object was not initialized"),
+      QString());
+    return;
+  }
 
+  Q_EMIT walletStateChangedSignal(tr("Registering account number"));
+  std::thread([this, _mode]() {
+    doRegisterAccountNumber(_mode);
+  }).detach();
+}
+
+void WalletAdapter::doRegisterAccountNumber(AccountRegistrationMode _mode) {
   try {
     auto finishRegistration = [this](int error, const QString& message, const QString& transactionHash = QString()) {
       Q_EMIT accountRegistrationCompletedSignal(error, message, transactionHash);
@@ -444,7 +460,12 @@ void WalletAdapter::registerAccountNumber(AccountRegistrationMode _mode) {
       Q_EMIT updateBlockStatusTextWithDelaySignal();
     };
 
-    Q_EMIT walletStateChangedSignal(tr("Registering account number"));
+    if (m_wallet == nullptr) {
+      finishRegistration(
+        static_cast<int>(CryptoNote::error::WalletErrorCodes::NOT_INITIALIZED),
+        tr("Object was not initialized"));
+      return;
+    }
 
     CryptoNote::AccountKeys keys;
     m_wallet->getAccountKeys(keys);
@@ -501,11 +522,22 @@ void WalletAdapter::registerAccountNumber(AccountRegistrationMode _mode) {
     const CryptoNote::Transaction tx = CryptoNote::buildFreeRegTransaction(pq.viewPub, pq.spendPub, headerInfo.hash, nonce);
 
     Q_EMIT walletStateChangedSignal(tr("Relaying free registration"));
-    std::promise<std::error_code> relayCompleted;
-    auto relayFuture = relayCompleted.get_future();
-    NodeAdapter::instance().getNode()->relayTransaction(tx, [&relayCompleted](std::error_code ec) {
-      relayCompleted.set_value(ec);
+    auto relayCompleted = std::make_shared<std::promise<std::error_code>>();
+    auto relayFuture = relayCompleted->get_future();
+    NodeAdapter::instance().getNode()->relayTransaction(tx, [relayCompleted](std::error_code ec) {
+      try {
+        relayCompleted->set_value(ec);
+      } catch (const std::future_error&) {
+      }
     });
+
+    if (relayFuture.wait_for(ACCOUNT_REGISTRATION_RELAY_TIMEOUT) != std::future_status::ready) {
+      finishRegistration(
+        static_cast<int>(CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR),
+        tr("The wallet solved the anti-spam proof-of-work, but the daemon did not answer the relay request within 60 seconds. "
+           "Check that the daemon is reachable and synchronized, then try again."));
+      return;
+    }
 
     const std::error_code relayError = relayFuture.get();
     if (relayError) {
