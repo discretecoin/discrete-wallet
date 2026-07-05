@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QStatusBar>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 
@@ -149,7 +150,7 @@ void MainWindow::initUi() {
   m_tabActionGroup->addAction(m_ui->m_addressBookAction);
   m_tabActionGroup->addAction(m_ui->m_miningAction);
 
-  // Assemble the left sidebar (account card + vertical nav + status footer)
+  // Assemble the left sidebar (account card + vertical nav)
   // and the content area, replacing the former top toolbars.
   buildSidebar();
 
@@ -169,10 +170,6 @@ void MainWindow::initUi() {
   m_syncProgressBar->hide();
 
   m_syncStatusLabel->hide();
-
-  // Status indicators now live in the sidebar footer (see buildSidebar); the
-  // QMainWindow status bar is unused.
-  statusBar()->hide();
 
   m_synchronizationStateIconLabel->setFixedSize(20, 20);
   m_synchronizationStateIconLabel->setScaledContents( true );
@@ -198,6 +195,18 @@ void MainWindow::initUi() {
   m_trackingModeIconLabel->hide();
   m_trackingModeIconLabel->setToolTip(tr("Tracking wallet. Spending unavailable"));
   m_remoteModeIconLabel->setToolTip(tr("Wallet is connected through a remote node."));
+
+  m_syncStatusLabel->setMinimumWidth(0);
+  m_syncStatusLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  statusBar()->setSizeGripEnabled(false);
+  statusBar()->addWidget(m_syncStatusLabel, 1);
+  statusBar()->addPermanentWidget(m_syncProgressBar);
+  statusBar()->addPermanentWidget(m_synchronizationStateIconLabel);
+  statusBar()->addPermanentWidget(m_connectionStateIconLabel);
+  statusBar()->addPermanentWidget(m_encryptionStateIconLabel);
+  statusBar()->addPermanentWidget(m_trackingModeIconLabel);
+  statusBar()->addPermanentWidget(m_remoteModeIconLabel);
+  statusBar()->show();
 
   QString connection = Settings::instance().getConnection();
   if(connection.compare("remote") == 0) {
@@ -387,23 +396,6 @@ void MainWindow::buildSidebar() {
   side->addLayout(nav);
 
   side->addStretch(1);
-
-  // Status footer.
-  QVBoxLayout* footer = new QVBoxLayout();
-  footer->setContentsMargins(2, 8, 2, 0);
-  footer->setSpacing(6);
-  footer->addWidget(m_syncStatusLabel);
-  footer->addWidget(m_syncProgressBar);
-  QHBoxLayout* icons = new QHBoxLayout();
-  icons->setSpacing(8);
-  icons->addWidget(m_synchronizationStateIconLabel);
-  icons->addWidget(m_connectionStateIconLabel);
-  icons->addWidget(m_encryptionStateIconLabel);
-  icons->addWidget(m_trackingModeIconLabel);
-  icons->addWidget(m_remoteModeIconLabel);
-  icons->addStretch(1);
-  footer->addLayout(icons);
-  side->addLayout(footer);
 
   // Replace the central widget's old grid with [ sidebar | content ]. The
   // account + view frames were reparented out above, so the grid is now empty.
@@ -919,8 +911,6 @@ void MainWindow::about() {
 }
 
 void MainWindow::setStatusBarText(const QString& _text) {
-  // The QMainWindow status bar is hidden; wallet-state text goes to the
-  // sidebar footer label instead.
   m_statusBarText = _text;
   m_syncStatusLabel->setText(m_statusBarText);
   m_syncStatusLabel->setVisible(!m_statusBarText.isEmpty());
@@ -1038,9 +1028,7 @@ void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
   m_synchronizationStateIconLabel->setPixmap(QIcon(":icons/synced").pixmap(96, 96));
   QString syncLabelTooltip = _error > 0 ? tr("Not synchronized") : tr("Synchronized");
   m_synchronizationStateIconLabel->setToolTip(syncLabelTooltip);
-  statusBar()->showMessage(m_statusBarText);
   m_syncProgressBar->hide();
-  m_syncStatusLabel->hide();
 }
 
 void MainWindow::walletOpened(bool _error, const QString& _error_text) {
