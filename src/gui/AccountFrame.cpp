@@ -15,6 +15,8 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QToolButton>
+#include <QToolTip>
 #include <future>
 #include "AccountFrame.h"
 #include "WalletAdapter.h"
@@ -38,10 +40,6 @@ constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
 // sidebar is narrow, so keep the elision short.
 constexpr int ADDRESS_ELIDE_PREFIX = 13;
 constexpr int ADDRESS_ELIDE_SUFFIX = 6;
-
-QString getCopyableAddressText() {
-  return WalletAdapter::instance().getAddress();
-}
 
 QString formatDisplayAddress(const QString& address) {
   if (address.isEmpty()) {
@@ -139,10 +137,10 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
     QMenu menu(this);
     QAction* copyAction = menu.addAction(tr("Copy address"));
-    copyAction->setEnabled(!WalletAdapter::instance().getAddress().isEmpty());
+    copyAction->setEnabled(!m_address.isEmpty());
 
     if (menu.exec(m_ui->m_addressLabel->mapToGlobal(_pos)) == copyAction) {
-      QApplication::clipboard()->setText(getCopyableAddressText());
+      copyTextToClipboard(m_address, m_ui->m_addressLabel);
     }
   });
   m_ui->m_accountNumberLabel->setFont(accountNumberFont);
@@ -155,6 +153,8 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_copyAccountNumberButton->setText(QString());
   m_ui->m_copyButton->setFocusPolicy(Qt::NoFocus);
   m_ui->m_copyAccountNumberButton->setFocusPolicy(Qt::NoFocus);
+  connect(m_ui->m_copyButton, &QToolButton::clicked, this, &AccountFrame::copyAddress);
+  connect(m_ui->m_copyAccountNumberButton, &QToolButton::clicked, this, &AccountFrame::copyAccountNumber);
 }
 
 AccountFrame::~AccountFrame() {
@@ -193,12 +193,11 @@ bool AccountFrame::eventFilter(QObject* _object, QEvent* _event) {
       (_event->type() == QEvent::KeyPress || _event->type() == QEvent::ShortcutOverride)) {
     auto* keyEvent = static_cast<QKeyEvent*>(_event);
     if (keyEvent->matches(QKeySequence::Copy)) {
-      const QString copyText = getCopyableAddressText();
-      if (copyText.isEmpty()) {
+      if (m_address.isEmpty()) {
         return false;
       }
 
-      QApplication::clipboard()->setText(copyText);
+      copyTextToClipboard(m_address, m_ui->m_addressLabel);
       _event->accept();
       return true;
     }
@@ -208,6 +207,7 @@ bool AccountFrame::eventFilter(QObject* _object, QEvent* _event) {
 }
 
 void AccountFrame::updateWalletAddress(const QString& _address) {
+  m_address = _address;
   m_ui->m_addressLabel->setText(formatDisplayAddress(_address));
   // The full address is ~3000 characters (bech32m-encoded PQ keys) — showing
   // it as a tooltip is unreadable. Use the copy button/context menu for that;
@@ -225,7 +225,7 @@ void AccountFrame::updateWalletAddress(const QString& _address) {
 }
 
 void AccountFrame::copyAddress() {
-  QApplication::clipboard()->setText(WalletAdapter::instance().getAddress());
+  copyTextToClipboard(m_address, m_ui->m_copyButton);
 }
 
 void AccountFrame::updateActualBalance(quint64 _balance) {
@@ -333,8 +333,22 @@ void AccountFrame::updateAccountNumberDisplay() {
 }
 
 void AccountFrame::copyAccountNumber() {
-  if (!m_accountNumber.isEmpty()) {
-    QApplication::clipboard()->setText(m_accountNumber);
+  copyTextToClipboard(m_accountNumber, m_ui->m_copyAccountNumberButton);
+}
+
+void AccountFrame::copyTextToClipboard(const QString& _text, QWidget* _anchor) {
+  if (_text.isEmpty()) {
+    return;
+  }
+
+  QClipboard* clipboard = QApplication::clipboard();
+  clipboard->setText(_text, QClipboard::Clipboard);
+  if (clipboard->supportsSelection()) {
+    clipboard->setText(_text, QClipboard::Selection);
+  }
+
+  if (_anchor != nullptr) {
+    QToolTip::showText(_anchor->mapToGlobal(_anchor->rect().center()), tr("Copied"), _anchor);
   }
 }
 
@@ -442,6 +456,7 @@ void AccountFrame::registerAccountNumber() {
 void AccountFrame::reset() {
   updateActualBalance(0);
   updatePendingBalance(0);
+  m_address.clear();
   m_ui->m_addressLabel->clear();
   m_ui->m_addressLabel->setToolTip(tr("Your receiving address"));
   m_accountNumber.clear();

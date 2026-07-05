@@ -488,6 +488,11 @@ void TransactionsModel::appendTransaction(CryptoNote::TransactionId _transaction
 }
 
 void TransactionsModel::updateWalletTransaction(CryptoNote::TransactionId _id) {
+  if (!m_transactionRow.contains(_id)) {
+    appendTransaction(_id);
+    return;
+  }
+
   quint32 firstRow = m_transactionRow.value(_id).first;
   quint32 lastRow = firstRow + m_transactionRow.value(_id).second - 1;
   Q_EMIT dataChanged(index(firstRow, COLUMN_DATE), index(lastRow, COLUMN_DATE));

@@ -356,38 +356,6 @@
  </resources>
  <connections>
   <connection>
-   <sender>m_copyButton</sender>
-   <signal>clicked()</signal>
-   <receiver>AccountFrame</receiver>
-   <slot>copyAddress()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>200</x>
-     <y>180</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>110</x>
-     <y>180</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>m_copyAccountNumberButton</sender>
-   <signal>clicked()</signal>
-   <receiver>AccountFrame</receiver>
-   <slot>copyAccountNumber()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>200</x>
-     <y>50</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>110</x>
-     <y>50</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_registerAccountButton</sender>
    <signal>clicked()</signal>
    <receiver>AccountFrame</receiver>

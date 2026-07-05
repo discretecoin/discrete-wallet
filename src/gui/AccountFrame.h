@@ -10,6 +10,7 @@
 class QEvent;
 class QMenu;
 class QProgressDialog;
+class QWidget;
 
 namespace Ui {
 class AccountFrame;
@@ -31,6 +32,7 @@ protected:
 
 private:
   QScopedPointer<Ui::AccountFrame> m_ui;
+  QString m_address;
   QString m_accountNumber;
   bool m_accountNumberResolved;
   bool m_accountNumberFetchInProgress;
@@ -55,6 +57,7 @@ private:
   void showRegistrationProgressDialog(bool _freeRegistration);
   void updateRegistrationProgressText(const QString& _stateText);
   void closeRegistrationProgressDialog();
+  void copyTextToClipboard(const QString& _text, QWidget* _anchor);
 
   QStringList divideAmount(quint64 _val);
 

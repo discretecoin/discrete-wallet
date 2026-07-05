@@ -891,11 +891,12 @@ void WalletAdapter::onWalletSendTransactionCompleted(CryptoNote::TransactionId _
     return;
   }
 
-  if (transaction.transferCount == 0) {
-    return;
+  // PQ sends are announced by WalletLegacy::notifyExternalTransactions(), which
+  // also advances the backend notification cursor. Classical rows still arrive
+  // here with explicit transfer rows.
+  if (transaction.transferCount > 0) {
+    Q_EMIT walletTransactionCreatedSignal(_transactionId);
   }
-
-  Q_EMIT walletTransactionCreatedSignal(_transactionId);
 
   save(true, true);
 }
