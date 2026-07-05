@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <future>
@@ -94,7 +95,7 @@ QStringList AccountFrame::divideAmount(quint64 _val) {
 
 AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::AccountFrame),
   m_accountNumberResolved(false), m_accountNumberFetchInProgress(false),
-  m_registrationPending(false) {
+  m_registrationPending(false), m_registrationProgressDialog(nullptr) {
   m_ui->setupUi(this);
   connect(&WalletAdapter::instance(), &WalletAdapter::updateWalletAddressSignal, this, &AccountFrame::updateWalletAddress);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletActualBalanceUpdatedSignal, this, &AccountFrame::updateActualBalance,
@@ -103,6 +104,8 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
     Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &AccountFrame::reset);
   connect(&WalletAdapter::instance(), &WalletAdapter::accountRegistrationCompletedSignal, this, &AccountFrame::accountRegistrationCompleted,
+    Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletStateChangedSignal, this, &AccountFrame::updateRegistrationProgressText,
     Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationCompletedSignal, this, [this](int _error, const QString&) {
     if (_error != 0 || !WalletAdapter::instance().isOpen() || m_accountNumberResolved) {
@@ -155,6 +158,7 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 }
 
 AccountFrame::~AccountFrame() {
+  closeRegistrationProgressDialog();
 }
 
 void AccountFrame::changeEvent(QEvent* _event) {
@@ -335,6 +339,8 @@ void AccountFrame::copyAccountNumber() {
 }
 
 void AccountFrame::accountRegistrationCompleted(int _error, const QString& _errorText, const QString& _transactionHash) {
+  closeRegistrationProgressDialog();
+
   if (_error != 0) {
     m_registrationPending = false;
     m_registrationTransactionHash.clear();
@@ -346,6 +352,47 @@ void AccountFrame::accountRegistrationCompleted(int _error, const QString& _erro
   m_registrationPending = true;
   m_registrationTransactionHash = _transactionHash;
   updateAccountNumberDisplay();
+}
+
+void AccountFrame::showRegistrationProgressDialog(bool _freeRegistration) {
+  closeRegistrationProgressDialog();
+
+  const QString labelText = _freeRegistration ?
+    tr("Solving registration proof-of-work...\nThis can take a few minutes.") :
+    tr("Submitting paid registration...");
+
+  m_registrationProgressDialog = new QProgressDialog(labelText, QString(), 0, 0, this);
+  m_registrationProgressDialog->setWindowTitle(tr("Register Account Number"));
+  m_registrationProgressDialog->setCancelButton(nullptr);
+  m_registrationProgressDialog->setWindowModality(Qt::WindowModal);
+  m_registrationProgressDialog->setMinimumDuration(0);
+  m_registrationProgressDialog->setAutoClose(false);
+  m_registrationProgressDialog->setAutoReset(false);
+  m_registrationProgressDialog->setValue(0);
+  m_registrationProgressDialog->show();
+}
+
+void AccountFrame::updateRegistrationProgressText(const QString& _stateText) {
+  if (m_registrationProgressDialog == nullptr || _stateText.isEmpty()) {
+    return;
+  }
+
+  if (_stateText.contains(tr("proof-of-work")) ||
+      _stateText.contains(tr("Relaying free registration")) ||
+      _stateText.contains(tr("Sending paid registration")) ||
+      _stateText.contains(tr("Registering account number"))) {
+    m_registrationProgressDialog->setLabelText(_stateText);
+  }
+}
+
+void AccountFrame::closeRegistrationProgressDialog() {
+  if (m_registrationProgressDialog == nullptr) {
+    return;
+  }
+
+  m_registrationProgressDialog->close();
+  m_registrationProgressDialog->deleteLater();
+  m_registrationProgressDialog = nullptr;
 }
 
 void AccountFrame::registerAccountNumber() {
@@ -384,10 +431,11 @@ void AccountFrame::registerAccountNumber() {
     m_accountNumberResolved = false;
     updateAccountNumberDisplay();
 
-    WalletAdapter::instance().registerAccountNumber(
-      paidButton != nullptr && clickedButton == paidButton ?
-        WalletAdapter::AccountRegistrationMode::Paid :
-        WalletAdapter::AccountRegistrationMode::Free);
+    const WalletAdapter::AccountRegistrationMode mode = paidButton != nullptr && clickedButton == paidButton ?
+      WalletAdapter::AccountRegistrationMode::Paid :
+      WalletAdapter::AccountRegistrationMode::Free;
+    showRegistrationProgressDialog(mode == WalletAdapter::AccountRegistrationMode::Free);
+    WalletAdapter::instance().registerAccountNumber(mode);
   }
 }
 
@@ -403,6 +451,7 @@ void AccountFrame::reset() {
   // wallet open never inherits stale UI state from the prior session.
   m_registrationPending = false;
   m_registrationTransactionHash.clear();
+  closeRegistrationProgressDialog();
   m_ui->m_accountNumberLabel->clear();
   m_ui->m_accountNumberLabel->setVisible(false);
   m_ui->m_copyAccountNumberButton->setVisible(false);

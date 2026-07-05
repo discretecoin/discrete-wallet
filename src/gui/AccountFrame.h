@@ -9,6 +9,7 @@
 
 class QEvent;
 class QMenu;
+class QProgressDialog;
 
 namespace Ui {
 class AccountFrame;
@@ -41,6 +42,7 @@ private:
   // first one is honored by consensus). Reset on wallet close, on address
   // change, and once a real account number arrives from the daemon.
   bool m_registrationPending;
+  QProgressDialog* m_registrationProgressDialog;
 
   void applyFramePalette();
   void updateWalletAddress(const QString& _address);
@@ -50,6 +52,9 @@ private:
   void fetchAccountNumber(const QString& _address);
   void updateAccountNumberDisplay();
   void accountRegistrationCompleted(int _error, const QString& _errorText, const QString& _transactionHash);
+  void showRegistrationProgressDialog(bool _freeRegistration);
+  void updateRegistrationProgressText(const QString& _stateText);
+  void closeRegistrationProgressDialog();
 
   QStringList divideAmount(quint64 _val);
 
