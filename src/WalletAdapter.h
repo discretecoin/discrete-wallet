@@ -67,10 +67,15 @@ public:
 
   void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee);
 
+  enum class AccountRegistrationMode {
+    Free,
+    Paid
+  };
+
   // Registers this wallet's PQ identity on chain as a short H-I-C account
-  // number (a normal fee-paying transaction carrying the registration tag in
-  // its extra field). See include/AccountNumber.h.
-  void registerAccountNumber();
+  // number. Free mode submits a zero-fee TX_FREE_REG with anti-spam PoW; paid
+  // mode submits a normal fee-paying TX_PQ carrying the registration tag.
+  void registerAccountNumber(AccountRegistrationMode _mode);
 
   // This wallet's own PQ identity, hex-encoded (view pub, spend pub) — used to
   // look up its account-number registration and to derive mining keys.

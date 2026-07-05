@@ -25,6 +25,7 @@
 #include "PqAddress.h"
 #include "Wallet/PqRecipient.h"
 #include "Wallet/PqTransactionBuilder.h"
+#include "CryptoNoteCore/TransactionExtra.h"
 #include "CryptoNoteCore/PqValidation.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
@@ -433,12 +434,12 @@ bool WalletAdapter::getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::Ds
   return true;
 }
 
-void WalletAdapter::registerAccountNumber() {
+void WalletAdapter::registerAccountNumber(AccountRegistrationMode _mode) {
   Q_CHECK_PTR(m_wallet);
 
   try {
-    auto failRegistration = [this](int error, const QString& message) {
-      Q_EMIT accountRegistrationCompletedSignal(error, message, QString());
+    auto finishRegistration = [this](int error, const QString& message, const QString& transactionHash = QString()) {
+      Q_EMIT accountRegistrationCompletedSignal(error, message, transactionHash);
       Q_EMIT walletStateChangedSignal(tr("Ready"));
       Q_EMIT updateBlockStatusTextWithDelaySignal();
     };
@@ -448,24 +449,58 @@ void WalletAdapter::registerAccountNumber() {
     CryptoNote::AccountKeys keys;
     m_wallet->getAccountKeys(keys);
     if (keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
-      failRegistration(
+      finishRegistration(
         static_cast<int>(CryptoNote::error::WalletErrorCodes::TRACKING_MODE),
         tr("Cannot register account number from a tracking wallet."));
       return;
     }
 
     CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+    if (_mode == AccountRegistrationMode::Paid) {
+      Q_EMIT walletStateChangedSignal(tr("Sending paid registration"));
+
+      std::vector<uint8_t> extra;
+      CryptoNote::addPqAccountRegistrationToExtra(extra, pq.viewPub, pq.spendPub);
+
+      std::vector<CryptoNote::WalletLegacyTransfer> transfers;
+      transfers.push_back(CryptoNote::WalletLegacyTransfer{
+        m_wallet->getAddress(),
+        static_cast<int64_t>(CryptoNote::parameters::DEFAULT_DUST_THRESHOLD)
+      });
+
+      QString transactionHash;
+      try {
+        lock();
+        const CryptoNote::TransactionId transactionId =
+          m_wallet->sendTransaction(transfers, 0, std::string(extra.begin(), extra.end()), 0, 0);
+
+        CryptoNote::WalletLegacyTransaction transaction;
+        if (transactionId != CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID &&
+            m_wallet->getTransaction(transactionId, transaction)) {
+          transactionHash = QString::fromStdString(Common::podToHex(transaction.hash));
+        }
+      } catch (...) {
+        unlock();
+        throw;
+      }
+
+      finishRegistration(0, QString(), transactionHash);
+      return;
+    }
+
     const CryptoNote::BlockHeaderInfo headerInfo = NodeAdapter::instance().getLastLocalBlockHeaderInfo();
     if (headerInfo.hash == Crypto::Hash{}) {
-      failRegistration(
+      finishRegistration(
         static_cast<int>(CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR),
         tr("Node has no known block to reference yet; try again once it is synchronized."));
       return;
     }
 
+    Q_EMIT walletStateChangedSignal(tr("Solving registration proof-of-work"));
     const uint64_t nonce = CryptoNote::grindFreeRegPow(pq.viewPub, headerInfo.hash);
     const CryptoNote::Transaction tx = CryptoNote::buildFreeRegTransaction(pq.viewPub, pq.spendPub, headerInfo.hash, nonce);
 
+    Q_EMIT walletStateChangedSignal(tr("Relaying free registration"));
     std::promise<std::error_code> relayCompleted;
     auto relayFuture = relayCompleted.get_future();
     NodeAdapter::instance().getNode()->relayTransaction(tx, [&relayCompleted](std::error_code ec) {
@@ -474,18 +509,18 @@ void WalletAdapter::registerAccountNumber() {
 
     const std::error_code relayError = relayFuture.get();
     if (relayError) {
-      failRegistration(
+      finishRegistration(
         relayError.value(),
-        QString::fromStdString(relayError.message()));
+        tr("The wallet solved the anti-spam proof-of-work, but the daemon did not accept the free registration relay: %1. "
+           "Make sure the daemon is current and synchronized, then try again.")
+          .arg(QString::fromStdString(relayError.message())));
       return;
     }
 
-    Q_EMIT accountRegistrationCompletedSignal(
+    finishRegistration(
       0,
       QString(),
       QString::fromStdString(Common::podToHex(CryptoNote::getObjectHash(tx))));
-    Q_EMIT walletStateChangedSignal(tr("Ready"));
-    Q_EMIT updateBlockStatusTextWithDelaySignal();
   } catch (const std::system_error& e) {
     Q_EMIT accountRegistrationCompletedSignal(
       e.code().value(),

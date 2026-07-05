@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <future>
 #include "AccountFrame.h"
@@ -357,19 +358,36 @@ void AccountFrame::registerAccountNumber() {
     return;
   }
 
-  if (QMessageBox::question(this, tr("Register Account Number"),
-      tr("Register an account number for easy payments?\nThis is free, but the wallet will solve a small anti-spam proof-of-work."),
-      QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
+  QMessageBox messageBox(this);
+  messageBox.setWindowTitle(tr("Register Account Number"));
+  messageBox.setIcon(QMessageBox::Question);
+  messageBox.setText(tr("Register an account number for easy payments?"));
+  messageBox.setInformativeText(tr("Free registration solves a small anti-spam proof-of-work. Paid registration uses wallet funds and pays the normal transaction fee."));
+
+  QPushButton* freeButton = messageBox.addButton(tr("Free"), QMessageBox::AcceptRole);
+  QPushButton* paidButton = nullptr;
+  if (WalletAdapter::instance().getActualBalance() > 0) {
+    paidButton = messageBox.addButton(tr("Paid"), QMessageBox::AcceptRole);
+  }
+  messageBox.addButton(QMessageBox::Cancel);
+  messageBox.setDefaultButton(freeButton);
+  messageBox.exec();
+
+  const QPushButton* clickedButton = qobject_cast<QPushButton*>(messageBox.clickedButton());
+  if (clickedButton == freeButton || (paidButton != nullptr && clickedButton == paidButton)) {
     // Hide the Register button BEFORE handing off to the wallet so that
     // even if the send takes a moment the user can't double-click it.
-    // sendTransaction is fire-and-forget here; consensus only honors the
-    // first registration per address per block, so duplicates are
-    // pure waste of fees + dust.
+    // Consensus only honors the first registration for an identity, so
+    // duplicate submissions are pure waste.
     m_registrationPending = true;
     m_registrationTransactionHash.clear();
     m_accountNumberResolved = false;
     updateAccountNumberDisplay();
-    WalletAdapter::instance().registerAccountNumber();
+
+    WalletAdapter::instance().registerAccountNumber(
+      paidButton != nullptr && clickedButton == paidButton ?
+        WalletAdapter::AccountRegistrationMode::Paid :
+        WalletAdapter::AccountRegistrationMode::Free);
   }
 }
 
