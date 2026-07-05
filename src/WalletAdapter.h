@@ -158,6 +158,7 @@ Q_SIGNALS:
   void walletTransactionCreatedSignal(CryptoNote::TransactionId _transaction_id);
   void walletSendTransactionCompletedSignal(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
   void walletTransactionUpdatedSignal(CryptoNote::TransactionId _transaction_id);
+  void accountRegistrationCompletedSignal(int _error, const QString& _error_text, const QString& _transaction_hash);
   void walletStateChangedSignal(const QString &_state_text);
 
   void openWalletWithPasswordSignal(bool _error);

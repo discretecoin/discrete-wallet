@@ -33,6 +33,7 @@ private:
   QString m_accountNumber;
   bool m_accountNumberResolved;
   bool m_accountNumberFetchInProgress;
+  QString m_registrationTransactionHash;
   // Set to true the moment the user confirms a registration. Used to hide
   // the Register button immediately so a single click can't be repeated
   // while the registration tx is still unconfirmed (otherwise users send
@@ -48,6 +49,7 @@ private:
   void reset();
   void fetchAccountNumber(const QString& _address);
   void updateAccountNumberDisplay();
+  void accountRegistrationCompleted(int _error, const QString& _errorText, const QString& _transactionHash);
 
   QStringList divideAmount(quint64 _val);
 

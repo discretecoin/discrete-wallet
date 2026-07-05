@@ -14,6 +14,8 @@
 #include <QVector>
 #include <QDebug>
 
+#include <future>
+
 #include <boost/filesystem.hpp>
 
 #include "WalletAdapter.h"
@@ -22,8 +24,10 @@
 #include "AccountNumber.h"
 #include "PqAddress.h"
 #include "Wallet/PqRecipient.h"
-#include "CryptoNoteCore/TransactionExtra.h"
+#include "Wallet/PqTransactionBuilder.h"
+#include "CryptoNoteCore/PqValidation.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
+#include "CryptoNoteCore/CryptoNoteTools.h"
 #include "crypto/crypto.h"
 #include "Common/StringTools.h"
 #include "Wallet/WalletErrors.h"
@@ -432,25 +436,70 @@ bool WalletAdapter::getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::Ds
 void WalletAdapter::registerAccountNumber() {
   Q_CHECK_PTR(m_wallet);
 
-  CryptoNote::AccountKeys keys;
-  m_wallet->getAccountKeys(keys);
-  CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
-
-  std::vector<uint8_t> extra;
-  CryptoNote::addPqAccountRegistrationToExtra(extra, pq.viewPub, pq.spendPub);
-
-  std::string extraString(extra.begin(), extra.end());
-
-  CryptoNote::WalletLegacyTransfer transfer;
-  transfer.address = m_wallet->getAddress();
-  transfer.amount = CryptoNote::parameters::DEFAULT_DUST_THRESHOLD;
-
   try {
-    lock();
+    auto failRegistration = [this](int error, const QString& message) {
+      Q_EMIT accountRegistrationCompletedSignal(error, message, QString());
+      Q_EMIT walletStateChangedSignal(tr("Ready"));
+      Q_EMIT updateBlockStatusTextWithDelaySignal();
+    };
+
     Q_EMIT walletStateChangedSignal(tr("Registering account number"));
-    m_wallet->sendTransaction(transfer, NodeAdapter::instance().getMinimalFee(), extraString, 0, 0);
-  } catch (std::system_error&) {
-    unlock();
+
+    CryptoNote::AccountKeys keys;
+    m_wallet->getAccountKeys(keys);
+    if (keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
+      failRegistration(
+        static_cast<int>(CryptoNote::error::WalletErrorCodes::TRACKING_MODE),
+        tr("Cannot register account number from a tracking wallet."));
+      return;
+    }
+
+    CryptoNote::PqWalletKeys pq = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+    const CryptoNote::BlockHeaderInfo headerInfo = NodeAdapter::instance().getLastLocalBlockHeaderInfo();
+    if (headerInfo.hash == Crypto::Hash{}) {
+      failRegistration(
+        static_cast<int>(CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR),
+        tr("Node has no known block to reference yet; try again once it is synchronized."));
+      return;
+    }
+
+    const uint64_t nonce = CryptoNote::grindFreeRegPow(pq.viewPub, headerInfo.hash);
+    const CryptoNote::Transaction tx = CryptoNote::buildFreeRegTransaction(pq.viewPub, pq.spendPub, headerInfo.hash, nonce);
+
+    std::promise<std::error_code> relayCompleted;
+    auto relayFuture = relayCompleted.get_future();
+    NodeAdapter::instance().getNode()->relayTransaction(tx, [&relayCompleted](std::error_code ec) {
+      relayCompleted.set_value(ec);
+    });
+
+    const std::error_code relayError = relayFuture.get();
+    if (relayError) {
+      failRegistration(
+        relayError.value(),
+        QString::fromStdString(relayError.message()));
+      return;
+    }
+
+    Q_EMIT accountRegistrationCompletedSignal(
+      0,
+      QString(),
+      QString::fromStdString(Common::podToHex(CryptoNote::getObjectHash(tx))));
+    Q_EMIT walletStateChangedSignal(tr("Ready"));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+  } catch (const std::system_error& e) {
+    Q_EMIT accountRegistrationCompletedSignal(
+      e.code().value(),
+      QString::fromStdString(e.code().message()),
+      QString());
+    Q_EMIT walletStateChangedSignal(tr("Ready"));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+  } catch (const std::exception& e) {
+    Q_EMIT accountRegistrationCompletedSignal(
+      static_cast<int>(CryptoNote::error::WalletErrorCodes::INTERNAL_WALLET_ERROR),
+      QString::fromLocal8Bit(e.what()),
+      QString());
+    Q_EMIT walletStateChangedSignal(tr("Ready"));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
   }
 }
 
