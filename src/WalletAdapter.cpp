@@ -443,8 +443,17 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
     // the GUI does not need to pre-resolve it. Mixin and payment IDs no longer
     // exist in the PQ design, so both trailing parameters stay at 0.
     m_wallet->sendTransaction(_transfers, _fee, "", 0, 0);
-  } catch (std::system_error&) {
+  } catch (std::system_error& _error) {
+    // A synchronous failure (an unresolvable account number -> BAD_ADDRESS,
+    // insufficient funds, a relay error, …) is thrown here rather than delivered
+    // through the completion observer. Surface it exactly like a completed-with-
+    // error send so the Send frame reports the reason; otherwise the status bar is
+    // left stuck on "Sending transaction" with nothing logged.
     unlock();
+    const int code = _error.code().value();
+    Q_EMIT walletSendTransactionCompletedSignal(
+      CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID, code, walletErrorMessage(code));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
   }
 }
 

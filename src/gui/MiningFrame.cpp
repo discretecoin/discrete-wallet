@@ -574,8 +574,8 @@ void MiningFrame::updateForecast() {
   // it never divides by zero.
   if (haveRate) {
     m_ui->m_expectationLabel->setText(
-        tr("At ~%1 you'll find a block about every %2 on average. Solo mining is a lottery — "
-           "long gaps are normal and don't mean anything is wrong.")
+        tr("At ~%1 you'll find a block about every %2 on average. Long gaps are normal "
+           "for solo mining and don't mean anything is wrong.")
             .arg(formatHashRate(m_lastHashRate), formatExpectedDuration(expectedSeconds)));
   } else if (m_solo_mining) {
     m_ui->m_expectationLabel->setText(tr("Measuring your hashrate to estimate how often you'll find a block…"));
@@ -663,7 +663,18 @@ void MiningFrame::onBlockFoundByMiner(quint64 _reward) {
 
   const QString reward = CurrencyAdapter::instance().formatAmount(_reward);
   const QString ticker = CurrencyAdapter::instance().getCurrencyTicker();
-  appendMiningEvent(QStringLiteral("BLOCK"), tr("Block found! Reward %1 %2 — nice work").arg(reward, ticker));
+  // Vary the celebratory tail so a run of finds doesn't read as a robotic
+  // "nice work … nice work …". Cycles per block found this session. Kept
+  // neutral-positive — no luck/lottery framing (see the expectation line above).
+  const QStringList flourishes = {
+    tr("nice find"),
+    tr("well earned"),
+    tr("that one's yours"),
+    tr("straight to your wallet"),
+    tr("reward secured"),
+  };
+  const QString flourish = flourishes.at((m_sessionBlocks - 1) % flourishes.size());
+  appendMiningEvent(QStringLiteral("BLOCK"), tr("Block found! Reward %1 %2 — %3").arg(reward, ticker, flourish));
   addHashRateEventMarker(true);
   updateForecast();
 }
