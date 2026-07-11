@@ -49,6 +49,7 @@ public:
   quint64 getTxCount();
   quint64 getTxPoolSize();
   quint64 getAltBlocksCount();
+  bool isFinalityForkActive();
   quint64 getConnectionsCount();
   quint64 getOutgoingConnectionsCount();
   quint64 getIncomingConnectionsCount();
@@ -84,10 +85,12 @@ private:
   Node* m_node;
   QThread m_nodeInitializerThread;
   InProcessNodeInitializer* m_nodeInitializer;
+  bool m_finalityForkActive;
 
   NodeAdapter();
   ~NodeAdapter();
 
+  void pollFinalityForkState();
   bool initInProcessNode();
   CryptoNote::CoreConfig makeCoreConfig() const;
   CryptoNote::NetNodeConfig makeNetNodeConfig() const;
@@ -99,6 +102,7 @@ Q_SIGNALS:
   void nodeInitCompletedSignal();
   void peerCountUpdatedSignal(quintptr _count);
   void poolChangedSignal();
+  void finalityForkStateChangedSignal(bool _active);
   void initNodeSignal(WalletGui::Node** _node, const CryptoNote::Currency* currency, INodeCallback* _callback, Logging::LoggerManager* _loggerManager,
     const CryptoNote::CoreConfig& _coreConfig, const CryptoNote::NetNodeConfig& _netNodeConfig, const CryptoNote::RpcServerConfig& _rpcServerConfig);
   void deinitNodeSignal(WalletGui::Node** _node);

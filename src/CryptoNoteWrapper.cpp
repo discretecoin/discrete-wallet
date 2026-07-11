@@ -123,6 +123,10 @@ public:
     return m_node.getAltBlocksCount();
   }
 
+  bool isFinalityForkActive() override {
+    return m_node.getFinalityForkActive();
+  }
+
   uint64_t getConnectionsCount() override {
     return m_node.getOutConnectionsCount();
   }
@@ -378,6 +382,10 @@ public:
 
   uint64_t getAltBlocksCount() override {
     return m_core.getAlternativeBlocksCount();
+  }
+
+  bool isFinalityForkActive() override {
+    return m_core.getFinalityForkState().active;
   }
 
   uint64_t getConnectionsCount() override {

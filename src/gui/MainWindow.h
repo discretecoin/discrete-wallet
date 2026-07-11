@@ -61,6 +61,7 @@ private:
   QLabel* m_synchronizationStateIconLabel;
   QLabel* m_trackingModeIconLabel;
   QLabel* m_remoteModeIconLabel;
+  QLabel* m_finalityWarningLabel;
   QSystemTrayIcon* m_trayIcon;
   QActionGroup* m_tabActionGroup;
   QWidget* m_sidebar;
@@ -99,6 +100,7 @@ private:
   bool confirmWithPassword();
   void encryptedFlagChanged(bool _encrypted);
   void peerCountUpdated(quint64 _peer_count);
+  void finalityForkStateChanged(bool _active);
   void walletSynchronizationInProgress(uint32_t _current, uint32_t _total);
   void walletSynchronized(int _error, const QString& _error_text);
   void walletOpened(bool _error, const QString& _error_text);

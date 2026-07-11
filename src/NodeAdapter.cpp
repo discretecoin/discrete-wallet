@@ -87,7 +87,7 @@ NodeAdapter& NodeAdapter::instance() {
   return inst;
 }
 
-NodeAdapter::NodeAdapter() : QObject(), m_node(nullptr), m_nodeInitializerThread(), m_nodeInitializer(new InProcessNodeInitializer) {
+NodeAdapter::NodeAdapter() : QObject(), m_node(nullptr), m_nodeInitializerThread(), m_nodeInitializer(new InProcessNodeInitializer), m_finalityForkActive(false) {
   m_nodeInitializer->moveToThread(&m_nodeInitializerThread);
 
   qRegisterMetaType<CryptoNote::CoreConfig>("CryptoNote::CoreConfig");
@@ -98,6 +98,13 @@ NodeAdapter::NodeAdapter() : QObject(), m_node(nullptr), m_nodeInitializerThread
   connect(m_nodeInitializer, &InProcessNodeInitializer::nodeInitCompletedSignal, this, &NodeAdapter::nodeInitCompletedSignal, Qt::QueuedConnection);
   connect(this, &NodeAdapter::initNodeSignal, m_nodeInitializer, &InProcessNodeInitializer::start, Qt::QueuedConnection);
   connect(this, &NodeAdapter::deinitNodeSignal, m_nodeInitializer, &InProcessNodeInitializer::stop, Qt::QueuedConnection);
+
+  // First-seen finality is a rare, non-urgent event, so a slow poll is plenty.
+  // Runs on the GUI thread, same as the other node status getters.
+  QTimer* finalityPollTimer = new QTimer(this);
+  finalityPollTimer->setInterval(15000);
+  connect(finalityPollTimer, &QTimer::timeout, this, &NodeAdapter::pollFinalityForkState);
+  finalityPollTimer->start();
 }
 
 NodeAdapter::~NodeAdapter() {
@@ -244,6 +251,21 @@ quint64 NodeAdapter::getTxPoolSize() {
 quint64 NodeAdapter::getAltBlocksCount() {
   Q_CHECK_PTR(m_node);
   return m_node->getAltBlocksCount();
+}
+
+bool NodeAdapter::isFinalityForkActive() {
+  return m_node == nullptr ? false : m_node->isFinalityForkActive();
+}
+
+void NodeAdapter::pollFinalityForkState() {
+  if (m_node == nullptr) {
+    return;
+  }
+  bool active = m_node->isFinalityForkActive();
+  if (active != m_finalityForkActive) {
+    m_finalityForkActive = active;
+    Q_EMIT finalityForkStateChangedSignal(active);
+  }
 }
 
 quint64 NodeAdapter::getConnectionsCount() {

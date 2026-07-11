@@ -86,6 +86,7 @@ MainWindow::MainWindow() : QMainWindow(),
   m_encryptionStateIconLabel = new QLabel(this);
   m_trackingModeIconLabel = new QLabel(this);
   m_remoteModeIconLabel = new QLabel(this);
+  m_finalityWarningLabel = new QLabel(this);
   m_syncProgressBar = new QProgressBar();
   m_syncStatusLabel = new QLabel();
   m_synchronizationStateIconLabel = new AnimatedLabel(this);
@@ -124,6 +125,7 @@ void MainWindow::connectToSignals() {
     }
   });
   connect(&NodeAdapter::instance(), &NodeAdapter::peerCountUpdatedSignal, this, &MainWindow::peerCountUpdated, Qt::QueuedConnection);
+  connect(&NodeAdapter::instance(), &NodeAdapter::finalityForkStateChangedSignal, this, &MainWindow::finalityForkStateChanged, Qt::QueuedConnection);
   connect(m_ui->m_exitAction, &QAction::triggered, qApp, &QApplication::quit);
   connect(m_ui->m_sendFrame, &SendFrame::uriOpenSignal, this, &MainWindow::onUriOpenSignal, Qt::QueuedConnection);
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::createWalletClickedSignal, this, &MainWindow::createWallet, Qt::QueuedConnection);
@@ -196,6 +198,12 @@ void MainWindow::initUi() {
   m_trackingModeIconLabel->setToolTip(tr("Tracking wallet. Spending unavailable"));
   m_remoteModeIconLabel->setToolTip(tr("Wallet is connected through a remote node."));
 
+  // First-seen finality: amber (not red) status-bar hint, shown only while the
+  // node reports it ignored a deeper competing chain. Kept low-key on purpose.
+  m_finalityWarningLabel->setText(QChar(0x26A0) + tr(" side chain "));  // U+26A0 warning sign
+  m_finalityWarningLabel->setStyleSheet("color: #d18b00;");
+  m_finalityWarningLabel->hide();
+
   m_syncStatusLabel->setMinimumWidth(0);
   m_syncStatusLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   statusBar()->setSizeGripEnabled(false);
@@ -206,6 +214,7 @@ void MainWindow::initUi() {
   statusBar()->addPermanentWidget(m_encryptionStateIconLabel);
   statusBar()->addPermanentWidget(m_trackingModeIconLabel);
   statusBar()->addPermanentWidget(m_remoteModeIconLabel);
+  statusBar()->addPermanentWidget(m_finalityWarningLabel);
   statusBar()->show();
 
   QString connection = Settings::instance().getConnection();
@@ -914,6 +923,26 @@ void MainWindow::setStatusBarText(const QString& _text) {
   m_statusBarText = _text;
   m_syncStatusLabel->setText(m_statusBarText);
   m_syncStatusLabel->setVisible(!m_statusBarText.isEmpty());
+}
+
+void MainWindow::finalityForkStateChanged(bool _active) {
+  // Deliberately low-key: this is usually just a brief connectivity hiccup that
+  // left the node on a side chain. No funds are at risk; the out-of-band explorer
+  // check is what tells the user whether their node is genuinely behind.
+  const QString message = tr(
+    "Your node ignored a deeper competing chain - most likely just a brief connectivity "
+    "hiccup that left it on a side chain. Nothing to worry about and your funds are safe.\n\n"
+    "If your balance looks off, your node may be a little behind: check the current chain on "
+    "the official block explorer. A node that stays behind can be returned to the main chain "
+    "with the resync recovery step (see the recovery guide).");
+
+  m_finalityWarningLabel->setToolTip(message);
+  m_finalityWarningLabel->setVisible(_active);
+
+  if (_active && m_trayIcon != nullptr && QSystemTrayIcon::supportsMessages()) {
+    // A gentle, non-modal toast rather than a modal popup — keep it casual.
+    m_trayIcon->showMessage(tr("Discrete"), message, QSystemTrayIcon::Information, 12000);
+  }
 }
 
 void MainWindow::showMessage(const QString& _text, QtMsgType _type) {

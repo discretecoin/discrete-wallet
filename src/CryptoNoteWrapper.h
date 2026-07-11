@@ -53,6 +53,9 @@ public:
   virtual uint64_t getTxCount() = 0;
   virtual uint64_t getTxPoolSize() = 0;
   virtual uint64_t getAltBlocksCount() = 0;
+  // First-seen finality: true while the node has ignored a deeper competing chain
+  // (usually a brief connectivity hiccup that left it on a side chain).
+  virtual bool isFinalityForkActive() = 0;
   virtual uint64_t getConnectionsCount() = 0;
   virtual uint64_t getOutgoingConnectionsCount() = 0;
   virtual uint64_t getIncomingConnectionsCount() = 0;
