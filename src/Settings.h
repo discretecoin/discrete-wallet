@@ -37,8 +37,6 @@ public:
   bool hasHideMyPortOption() const;
   bool isTestnet() const;
   bool withoutCheckpoints() const;
-  bool hasRejectDeepReorg() const;
-  quint32 rejectDeepReorg() const;
   bool hasRunRpc() const;
   bool hasRestrictedRpc() const;
   QDir getDataDir() const;

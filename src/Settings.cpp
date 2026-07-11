@@ -111,16 +111,6 @@ bool Settings::withoutCheckpoints() const {
   return m_cmdLineParser->hasWithoutCheckpointsOption();
 }
 
-bool Settings::hasRejectDeepReorg() const {
-  Q_ASSERT(m_cmdLineParser != nullptr);
-  return m_cmdLineParser->hasRejectDeepReorgOption();
-}
-
-quint32 Settings::rejectDeepReorg() const {
-  Q_ASSERT(m_cmdLineParser != nullptr);
-  return m_cmdLineParser->getRejectDeepReorg();
-}
-
 bool Settings::hasAllowLocalIpOption() const {
   Q_ASSERT(m_cmdLineParser != nullptr);
   return m_cmdLineParser->hasAllowLocalIpOption();
