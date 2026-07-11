@@ -276,7 +276,14 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
         }
 
         if (!*registered) {
-          m_accountNumberResolved = true;
+          // A registration we just submitted only takes effect once its tx is
+          // mined, so while one is pending this "not registered" answer is not
+          // final: keep m_accountNumberResolved false so every sync-completion
+          // re-polls until the account number appears. Otherwise the latch trips
+          // on the first poll (tx still in mempool) and the guard in the
+          // synchronization handler blocks all further fetches — leaving
+          // "Registration pending..." stuck even after the tx confirms.
+          m_accountNumberResolved = !m_registrationPending;
           m_accountNumber.clear();
           m_accountNumberFetchInProgress = false;
           updateAccountNumberDisplay();
