@@ -5,6 +5,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <algorithm>
+#include <cmath>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QThread>
@@ -189,6 +190,17 @@ MiningFrame::MiningFrame(QWidget* _parent) :
   initDifficultyChart();
   applyChartPalette();
   updateCpuIntensity();
+
+  // Neutral context for the Luck read-out: above 100% only means this search is
+  // running longer than average, which is ordinary variance for solo mining — not
+  // an error. Kept as a tooltip with default (non-alarming) colouring.
+  const QString luckTooltip = tr("Luck compares the work done to the difficulty. Above 100% simply means "
+      "this search is taking longer than average — that is normal variance for solo mining, not a problem.");
+  m_ui->m_luckTitle->setToolTip(luckTooltip);
+  m_ui->m_luckValue->setToolTip(luckTooltip);
+  m_ui->m_blockProgressBar->setToolTip(tr("How much of the average time-to-a-block has elapsed since your last "
+      "find. It is an average, not a probability: each hash is independent, so this never means a block is 'due'."));
+
   updateSessionStats();
 
   addPoint(QDateTime::currentDateTime().toSecsSinceEpoch(), 0);
@@ -216,6 +228,17 @@ MiningFrame::MiningFrame(QWidget* _parent) :
   connect(&*m_miner, &Miner::minerTemplateUpdatedSignal, this, &MiningFrame::onMinerTemplateUpdated, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::miningErrorSignal, this, &MiningFrame::onMinerError, Qt::QueuedConnection);
   connect(m_coreLogWatcher, &LogFileWatcher::newLogStringSignal, this, &MiningFrame::updateCoreLog, Qt::QueuedConnection);
+
+  // Lifetime mining stats are derived from the wallet's own coinbase transactions,
+  // so we refresh them when the transaction set changes rather than on a timer.
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionCreatedSignal, this, &MiningFrame::onWalletTransactionsChanged, Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionUpdatedSignal, this, &MiningFrame::onWalletTransactionsChanged, Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::reloadWalletTransactionsSignal, this, &MiningFrame::onWalletTransactionsReset, Qt::QueuedConnection);
+
+  if (WalletAdapter::instance().isOpen()) {
+    scanLifetimeStats(false);
+  }
+  updateForecast();
 }
 
 MiningFrame::~MiningFrame() {
@@ -462,6 +485,10 @@ void MiningFrame::appendRawLogLine(const QString& _line) {
 
 void MiningFrame::resetSessionStats() {
   m_sessionStartedAt = QDateTime::currentDateTime();
+  m_sessionBlocks = 0;
+  // Anchor the expected-time progress bar to the start of this mining stretch;
+  // it advances toward D/h and is re-anchored whenever a block is found.
+  m_lastBlockFoundAt = m_sessionStartedAt;
   m_sessionTotalHashes = 0;
   m_roundHashes = 0;
   m_sessionPeakHashRate = 0;
@@ -509,6 +536,169 @@ void MiningFrame::updateSessionStats() {
   const double luck = m_currentDifficulty > 0 ? (m_roundHashes / m_currentDifficulty) * 100 : 0;
   const int luckPrecision = luck < 10 ? 1 : 0;
   m_ui->m_luckValue->setText(QStringLiteral("%1%").arg(QString::number(luck, 'f', luckPrecision)));
+
+  updateForecast();
+}
+
+QString MiningFrame::formatExpectedDuration(double _seconds) const {
+  if (!std::isfinite(_seconds) || _seconds <= 0) {
+    return QStringLiteral("-");
+  }
+
+  qint64 totalSeconds = static_cast<qint64>(std::llround(_seconds));
+  if (totalSeconds < 60) {
+    return tr("%1s").arg(totalSeconds);
+  }
+
+  const qint64 days = totalSeconds / 86400;
+  totalSeconds %= 86400;
+  const qint64 hours = totalSeconds / 3600;
+  totalSeconds %= 3600;
+  const qint64 minutes = totalSeconds / 60;
+  const qint64 seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return tr("%1d %2h").arg(days).arg(hours);
+  }
+  if (hours > 0) {
+    return tr("%1h %2m").arg(hours).arg(minutes);
+  }
+  return tr("%1m %2s").arg(minutes).arg(seconds);
+}
+
+void MiningFrame::updateForecast() {
+  // Expected solo time to a block is D / h seconds. This is the same relationship
+  // the "Est. block" read-out uses (see above) and is kept as the single source
+  // of truth for both the ETA and this forward-progress element.
+  const bool haveRate = m_solo_mining && m_lastHashRate > 0 && m_currentDifficulty > 0;
+  const double expectedSeconds = haveRate ? (m_currentDifficulty / m_lastHashRate) : 0;
+
+  // Plain-language expectation line, updated live from the current difficulty and
+  // hashrate. Degrades gracefully to a neutral prompt when h == 0 / not mining so
+  // it never divides by zero.
+  if (haveRate) {
+    m_ui->m_expectationLabel->setText(
+        tr("At ~%1 you'll find a block about every %2 on average. Solo mining is a lottery — "
+           "long gaps are normal and don't mean anything is wrong.")
+            .arg(formatHashRate(m_lastHashRate), formatExpectedDuration(expectedSeconds)));
+  } else if (m_solo_mining) {
+    m_ui->m_expectationLabel->setText(tr("Measuring your hashrate to estimate how often you'll find a block…"));
+  } else {
+    m_ui->m_expectationLabel->setText(tr("Start mining to see how often you can expect to find a block."));
+  }
+
+  // Between-block progress: the fraction of the *expected* time that has elapsed
+  // since the last find. Explicitly an average, not a probability — solo mining is
+  // a memoryless Poisson process, so effort never accumulates toward a guaranteed
+  // block. Past 100% we switch to a calm "overdue but normal" state, never an alarm.
+  if (haveRate && m_lastBlockFoundAt.isValid()) {
+    const double elapsedSeconds = std::max<double>(0, m_lastBlockFoundAt.secsTo(QDateTime::currentDateTime()));
+    const double fraction = elapsedSeconds / expectedSeconds;
+    const int barValue = static_cast<int>(std::min(fraction, 1.0) * m_ui->m_blockProgressBar->maximum());
+    m_ui->m_blockProgressBar->setValue(barValue);
+    if (fraction <= 1.0) {
+      m_ui->m_blockProgressCaption->setText(tr("~%1% of an average find").arg(static_cast<int>(fraction * 100 + 0.5)));
+    } else {
+      m_ui->m_blockProgressCaption->setText(tr("Longer than average — normal for solo mining"));
+    }
+  } else {
+    m_ui->m_blockProgressBar->setValue(0);
+    m_ui->m_blockProgressCaption->setText(m_solo_mining ? tr("Measuring hashrate…") : QStringLiteral("—"));
+  }
+
+  // Session and all-time blocks are always shown together, so a fresh restart
+  // never presents a lonely "0".
+  m_ui->m_blocksSummaryLabel->setText(
+      tr("Blocks: %1 this session · %2 all time").arg(m_sessionBlocks).arg(m_lifetimeBlocks));
+
+  if (m_lifetimeStatsReady) {
+    m_ui->m_rewardSummaryLabel->setText(
+        tr("Mined all time: %1 %2")
+            .arg(CurrencyAdapter::instance().formatAmount(m_lifetimeReward),
+                 CurrencyAdapter::instance().getCurrencyTicker()));
+  } else {
+    m_ui->m_rewardSummaryLabel->setText(tr("Mined all time: —"));
+  }
+
+  // Rolling recent view: a short dry spell looks ordinary next to the longer
+  // 24h / 7d picture.
+  const qint64 now = QDateTime::currentSecsSinceEpoch();
+  int last24h = 0;
+  int last7d = 0;
+  for (qint64 timestamp : m_recentBlockTimes) {
+    if (timestamp >= now - 24 * 3600) {
+      ++last24h;
+    }
+    if (timestamp >= now - 7 * 24 * 3600) {
+      ++last7d;
+    }
+  }
+  m_ui->m_recentBlocksLabel->setText(tr("Recent finds — %1 in 24h, %2 in 7d").arg(last24h).arg(last7d));
+}
+
+void MiningFrame::resetLifetimeStats() {
+  m_lifetimeBlocks = 0;
+  m_lifetimeReward = 0;
+  m_lifetimeStatsReady = false;
+  m_lifetimeScanCursor = 0;
+  m_recentBlockTimes.clear();
+}
+
+void MiningFrame::scanLifetimeStats(bool _announceNewBlocks) {
+  if (!WalletAdapter::instance().isOpen()) {
+    return;
+  }
+
+  // Walk only the transaction ids we have not seen yet. Ids are append-only and a
+  // coinbase transaction's isCoinbase flag and amount never change, so an
+  // incremental scan is correct and keeps this off the hot path — the 1s
+  // hash-rate timer never calls it, only wallet transaction/open events do.
+  const quint64 transactionCount = WalletAdapter::instance().getTransactionCount();
+  const bool wasReady = m_lifetimeStatsReady;
+  QList<quint64> newFinds;
+
+  for (quint64 id = m_lifetimeScanCursor; id < transactionCount; ++id) {
+    CryptoNote::TransactionId transactionId = static_cast<CryptoNote::TransactionId>(id);
+    CryptoNote::WalletLegacyTransaction transaction;
+    if (!WalletAdapter::instance().getTransaction(transactionId, transaction) || !transaction.isCoinbase) {
+      continue;
+    }
+
+    const quint64 reward = transaction.totalAmount > 0 ? static_cast<quint64>(transaction.totalAmount) : 0;
+    ++m_lifetimeBlocks;
+    m_lifetimeReward += reward;
+    if (transaction.timestamp > 0) {
+      m_recentBlockTimes.append(static_cast<qint64>(transaction.timestamp));
+    }
+
+    // A coinbase we discover while actively solo mining is a block we just found.
+    // Never announce the historical blocks read on first open (baseline), nor
+    // coinbases that merely sync in while we are not mining.
+    if (wasReady && _announceNewBlocks && m_solo_mining) {
+      newFinds.append(reward);
+    }
+  }
+
+  m_lifetimeScanCursor = transactionCount;
+  m_lifetimeStatsReady = true;
+
+  for (quint64 reward : newFinds) {
+    onBlockFoundByMiner(reward);
+  }
+
+  updateForecast();
+}
+
+void MiningFrame::onBlockFoundByMiner(quint64 _reward) {
+  ++m_sessionBlocks;
+  // Re-anchor the expected-time progress bar: the search for the next block
+  // starts now.
+  m_lastBlockFoundAt = QDateTime::currentDateTime();
+
+  const QString reward = CurrencyAdapter::instance().formatAmount(_reward);
+  const QString ticker = CurrencyAdapter::instance().getCurrencyTicker();
+  appendMiningEvent(QStringLiteral("BLOCK"), tr("Block found! Reward %1 %2 — nice work").arg(reward, ticker));
+  addHashRateEventMarker(true);
 }
 
 void MiningFrame::updateCpuIntensity() {
@@ -667,6 +857,11 @@ void MiningFrame::walletOpened() {
 
   m_wallet_closed = false;
 
+  // Re-derive lifetime blocks/reward from this wallet's coinbase history. The
+  // first scan just captures the baseline (historical blocks are not announced).
+  resetLifetimeStats();
+  scanLifetimeStats(false);
+
   quint64 difficulty = NodeAdapter::instance().getDifficulty();
   updateDifficulty(difficulty);
 }
@@ -674,6 +869,8 @@ void MiningFrame::walletOpened() {
 void MiningFrame::walletClosed() {
   //stopSolo();
   m_wallet_closed = true;
+  resetLifetimeStats();
+  updateForecast();
   //m_ui->m_startSolo->setEnabled(false);
   //m_ui->m_stopSolo->isChecked();
 
@@ -762,6 +959,7 @@ void MiningFrame::stopSolo(bool _stoppedByNoPeers) {
     m_solo_mining = false;
     m_mining_was_stopped = !_stoppedByNoPeers;
     m_miningStoppedByNoPeers = _stoppedByNoPeers;
+    updateForecast();
   }
 }
 
@@ -837,6 +1035,10 @@ void MiningFrame::onSynchronizationCompleted() {
     m_ui->m_startSolo->setEnabled(false);
     return;
   }
+  // A full sync may have brought in coinbase transactions (blocks we found);
+  // refresh lifetime stats and announce any found during this mining session.
+  scanLifetimeStats(true);
+
   const bool resumeMining = m_miningStoppedByNoPeers && NodeAdapter::instance().getPeerCount() > 0;
   enableSolo();
   if (resumeMining && !m_solo_mining && !m_miner->is_mining()) {
@@ -851,6 +1053,20 @@ void MiningFrame::updateBalance(quint64 _balance) {
 
 void MiningFrame::updatePendingBalance(quint64 _balance) {
   Q_UNUSED(_balance);
+}
+
+void MiningFrame::onWalletTransactionsChanged() {
+  // A new/updated transaction may be a coinbase (a block we mined). Announce it
+  // if it appears while we are solo mining.
+  scanLifetimeStats(true);
+}
+
+void MiningFrame::onWalletTransactionsReset() {
+  // The whole transaction set was rebuilt (e.g. wallet reset/rescan): recount the
+  // baseline from scratch without announcing historical blocks.
+  resetLifetimeStats();
+  scanLifetimeStats(false);
+  updateForecast();
 }
 
 void MiningFrame::updateMinerLog(const QString& _message) {
@@ -903,6 +1119,7 @@ void MiningFrame::onMinerStopped(quint32 _threads) {
   m_solo_mining = false;
   m_mining_was_stopped = true;
   m_miningStoppedByNoPeers = false;
+  updateForecast();
 }
 
 void MiningFrame::onMinerThreadsChanged(quint32 _threads) {
