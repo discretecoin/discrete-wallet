@@ -83,15 +83,15 @@ private:
   double m_lastHashRate = 0;
   double m_currentDifficulty = 0;
 
-  // Lifetime / persistent mining stats, derived from the wallet's own coinbase
-  // (mined) transactions so they survive restarts and reinstalls without any
-  // extra persisted state. Scanned incrementally (see scanLifetimeStats), never
-  // on the 1s hash-rate timer.
+  // Lifetime / persistent mining stats. These count blocks THIS rig's miner
+  // actually found (via NodeAdapter::blockFoundByMinerSignal), NOT wallet coinbase
+  // receipts — coinbase cannot attribute a block to a rig when several mine to one
+  // address. Loaded from / persisted to Settings (see loadLifetimeStats and
+  // Settings::recordMinedBlock) so they survive restarts.
   quint64 m_lifetimeBlocks = 0;
   quint64 m_lifetimeReward = 0;          // atomic units
-  bool m_lifetimeStatsReady = false;     // baseline captured after the first scan
-  quint64 m_lifetimeScanCursor = 0;      // next wallet transaction id to scan
-  QList<qint64> m_recentBlockTimes;      // epoch seconds of coinbase txns (24h/7d)
+  bool m_lifetimeStatsReady = false;     // set once stats are loaded from Settings
+  QList<qint64> m_recentBlockTimes;      // epoch seconds of this rig's finds (24h/7d)
   quint64 m_sessionBlocks = 0;           // blocks found in the current session
   QDateTime m_lastBlockFoundAt;          // anchor for the expected-time progress bar
 
@@ -105,9 +105,7 @@ private:
   void appendRawLogLine(const QString& _line);
   void resetSessionStats();
   void updateSessionStats();
-  void resetLifetimeStats();
-  void scanLifetimeStats(bool _announceNewBlocks);
-  void onBlockFoundByMiner(quint64 _reward);
+  void loadLifetimeStats();
   void updateForecast();
   QString formatExpectedDuration(double _seconds) const;
   void updateCpuIntensity();
@@ -129,8 +127,9 @@ private:
   Q_SLOT void onSynchronizationCompleted();
   Q_SLOT void updateBalance(quint64 _balance);
   Q_SLOT void updatePendingBalance(quint64 _balance);
-  Q_SLOT void onWalletTransactionsChanged();
-  Q_SLOT void onWalletTransactionsReset();
+  // Fired by the in-process node when THIS rig's miner finds and gets a block
+  // accepted — the authoritative, per-rig found-block signal.
+  Q_SLOT void onBlockFoundByMiner(quint64 _reward);
   Q_SLOT void updateMinerLog(const QString& _message);
   Q_SLOT void updateCoreLog(const QString& _message);
   Q_SLOT void onMinerStarted(quint32 _threads, quint64 _difficulty);

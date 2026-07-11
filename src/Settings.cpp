@@ -312,6 +312,58 @@ bool Settings::isMiningOnLaunchEnabled() const {
   return m_settings.contains("autostartMininig") ? m_settings.value("autostartMininig").toBool() : false;
 }
 
+quint64 Settings::getLifetimeMinedBlocks() const {
+  if (!m_settings.contains("miningStats")) {
+    return 0;
+  }
+  return static_cast<quint64>(m_settings.value("miningStats").toObject().value("blocks").toString("0").toULongLong());
+}
+
+quint64 Settings::getLifetimeMinedReward() const {
+  if (!m_settings.contains("miningStats")) {
+    return 0;
+  }
+  // Reward is stored as a decimal string: atomic-unit totals can exceed the exact
+  // integer range of a JSON double, so we never round-trip it through a number.
+  return static_cast<quint64>(m_settings.value("miningStats").toObject().value("reward").toString("0").toULongLong());
+}
+
+QList<qint64> Settings::getRecentFindTimes() const {
+  QList<qint64> times;
+  if (!m_settings.contains("miningStats")) {
+    return times;
+  }
+  const QJsonArray arr = m_settings.value("miningStats").toObject().value("recentTimes").toArray();
+  for (const QJsonValue& v : arr) {
+    times.append(static_cast<qint64>(v.toString("0").toLongLong()));
+  }
+  return times;
+}
+
+void Settings::recordMinedBlock(quint64 _reward, qint64 _timestamp) {
+  QJsonObject stats = m_settings.value("miningStats").toObject();
+
+  const quint64 blocks = getLifetimeMinedBlocks() + 1;
+  const quint64 reward = getLifetimeMinedReward() + _reward;
+
+  // Keep the rolling-window list bounded: the UI only ever reports 24h / 7d, so a
+  // find older than 7 days can never contribute again.
+  const qint64 cutoff = _timestamp - 7 * 24 * 3600;
+  QJsonArray times;
+  for (qint64 t : getRecentFindTimes()) {
+    if (t >= cutoff) {
+      times.append(QString::number(t));
+    }
+  }
+  times.append(QString::number(_timestamp));
+
+  stats.insert("blocks", QString::number(blocks));
+  stats.insert("reward", QString::number(reward));
+  stats.insert("recentTimes", times);
+  m_settings.insert("miningStats", stats);
+  saveSettings();
+}
+
 bool Settings::isStartOnLoginEnabled() const {
   bool res = false;
 #ifdef Q_OS_MAC

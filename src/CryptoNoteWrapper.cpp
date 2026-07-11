@@ -553,6 +553,10 @@ private:
     m_callback.poolChanged(*this);
   }
 
+  void blockFoundByMiner(uint64_t reward) override {
+    m_callback.blockFoundByMiner(*this, reward);
+  }
+
   // dummy, used only for INodeRpcProxyObserver
   void connectionStatusUpdated(bool _connected) {
     m_callback.connectionStatusUpdated(_connected);

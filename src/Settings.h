@@ -7,6 +7,7 @@
 
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -63,6 +64,15 @@ public:
   NodeSetting getCurrentRemoteNode() const;
   quint16 getMiningThreads() const;
   QString getCurrentTheme() const;
+
+  // Rig-level lifetime mining stats, driven solely by this node's own miner
+  // finding a block (never by wallet coinbase, which cannot attribute a block to a
+  // specific rig when several mine to one address). Persisted per installation so
+  // they survive restarts. Timestamps are epoch seconds of each find.
+  quint64 getLifetimeMinedBlocks() const;
+  quint64 getLifetimeMinedReward() const;
+  QList<qint64> getRecentFindTimes() const;
+  void recordMinedBlock(quint64 _reward, qint64 _timestamp);
 
   quint32 getRollBack() const;
 

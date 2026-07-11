@@ -72,6 +72,7 @@ public:
   void lastKnownBlockHeightUpdated(Node& _node, uint64_t _height) Q_DECL_OVERRIDE;
   void connectionStatusUpdated(bool _connected) Q_DECL_OVERRIDE;
   void poolChanged(Node& _node) Q_DECL_OVERRIDE;
+  void blockFoundByMiner(Node& _node, uint64_t _reward) Q_DECL_OVERRIDE;
 
   CryptoNote::INode* getNode();
   System::Dispatcher& getDispatcher();
@@ -102,6 +103,7 @@ Q_SIGNALS:
   void nodeInitCompletedSignal();
   void peerCountUpdatedSignal(quintptr _count);
   void poolChangedSignal();
+  void blockFoundByMinerSignal(quint64 _reward);
   void finalityForkStateChangedSignal(bool _active);
   void initNodeSignal(WalletGui::Node** _node, const CryptoNote::Currency* currency, INodeCallback* _callback, Logging::LoggerManager* _loggerManager,
     const CryptoNote::CoreConfig& _coreConfig, const CryptoNote::NetNodeConfig& _netNodeConfig, const CryptoNote::RpcServerConfig& _rpcServerConfig);

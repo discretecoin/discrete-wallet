@@ -221,6 +221,7 @@ MiningFrame::MiningFrame(QWidget* _parent) :
   connect(&NodeAdapter::instance(), &NodeAdapter::localBlockchainUpdatedSignal, this, &MiningFrame::onBlockHeightUpdated, Qt::QueuedConnection);
   connect(&NodeAdapter::instance(), &NodeAdapter::peerCountUpdatedSignal, this, &MiningFrame::onPeerCountUpdated, Qt::QueuedConnection);
   connect(&NodeAdapter::instance(), &NodeAdapter::poolChangedSignal, this, &MiningFrame::poolChanged,Qt::QueuedConnection);
+  connect(&NodeAdapter::instance(), &NodeAdapter::blockFoundByMinerSignal, this, &MiningFrame::onBlockFoundByMiner, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::minerMessageSignal, this, &MiningFrame::updateMinerLog, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::minerStartedSignal, this, &MiningFrame::onMinerStarted, Qt::QueuedConnection);
   connect(&*m_miner, &Miner::minerStoppedSignal, this, &MiningFrame::onMinerStopped, Qt::QueuedConnection);
@@ -229,15 +230,10 @@ MiningFrame::MiningFrame(QWidget* _parent) :
   connect(&*m_miner, &Miner::miningErrorSignal, this, &MiningFrame::onMinerError, Qt::QueuedConnection);
   connect(m_coreLogWatcher, &LogFileWatcher::newLogStringSignal, this, &MiningFrame::updateCoreLog, Qt::QueuedConnection);
 
-  // Lifetime mining stats are derived from the wallet's own coinbase transactions,
-  // so we refresh them when the transaction set changes rather than on a timer.
-  connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionCreatedSignal, this, &MiningFrame::onWalletTransactionsChanged, Qt::QueuedConnection);
-  connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionUpdatedSignal, this, &MiningFrame::onWalletTransactionsChanged, Qt::QueuedConnection);
-  connect(&WalletAdapter::instance(), &WalletAdapter::reloadWalletTransactionsSignal, this, &MiningFrame::onWalletTransactionsReset, Qt::QueuedConnection);
-
-  if (WalletAdapter::instance().isOpen()) {
-    scanLifetimeStats(false);
-  }
+  // Rig-level lifetime mining stats are persisted in Settings and driven only by
+  // this node's miner finding a block, so they are loaded once here rather than
+  // recomputed from wallet transactions.
+  loadLifetimeStats();
   updateForecast();
 }
 
@@ -636,69 +632,40 @@ void MiningFrame::updateForecast() {
   m_ui->m_recentBlocksLabel->setText(tr("Recent finds — %1 in 24h, %2 in 7d").arg(last24h).arg(last7d));
 }
 
-void MiningFrame::resetLifetimeStats() {
-  m_lifetimeBlocks = 0;
-  m_lifetimeReward = 0;
-  m_lifetimeStatsReady = false;
-  m_lifetimeScanCursor = 0;
-  m_recentBlockTimes.clear();
-}
-
-void MiningFrame::scanLifetimeStats(bool _announceNewBlocks) {
-  if (!WalletAdapter::instance().isOpen()) {
-    return;
-  }
-
-  // Walk only the transaction ids we have not seen yet. Ids are append-only and a
-  // coinbase transaction's isCoinbase flag and amount never change, so an
-  // incremental scan is correct and keeps this off the hot path — the 1s
-  // hash-rate timer never calls it, only wallet transaction/open events do.
-  const quint64 transactionCount = WalletAdapter::instance().getTransactionCount();
-  const bool wasReady = m_lifetimeStatsReady;
-  QList<quint64> newFinds;
-
-  for (quint64 id = m_lifetimeScanCursor; id < transactionCount; ++id) {
-    CryptoNote::TransactionId transactionId = static_cast<CryptoNote::TransactionId>(id);
-    CryptoNote::WalletLegacyTransaction transaction;
-    if (!WalletAdapter::instance().getTransaction(transactionId, transaction) || !transaction.isCoinbase) {
-      continue;
-    }
-
-    const quint64 reward = transaction.totalAmount > 0 ? static_cast<quint64>(transaction.totalAmount) : 0;
-    ++m_lifetimeBlocks;
-    m_lifetimeReward += reward;
-    if (transaction.timestamp > 0) {
-      m_recentBlockTimes.append(static_cast<qint64>(transaction.timestamp));
-    }
-
-    // A coinbase we discover while actively solo mining is a block we just found.
-    // Never announce the historical blocks read on first open (baseline), nor
-    // coinbases that merely sync in while we are not mining.
-    if (wasReady && _announceNewBlocks && m_solo_mining) {
-      newFinds.append(reward);
-    }
-  }
-
-  m_lifetimeScanCursor = transactionCount;
+void MiningFrame::loadLifetimeStats() {
+  // Rig-level totals persisted across restarts (see Settings::recordMinedBlock).
+  m_lifetimeBlocks = Settings::instance().getLifetimeMinedBlocks();
+  m_lifetimeReward = Settings::instance().getLifetimeMinedReward();
+  m_recentBlockTimes = Settings::instance().getRecentFindTimes();
   m_lifetimeStatsReady = true;
-
-  for (quint64 reward : newFinds) {
-    onBlockFoundByMiner(reward);
-  }
-
   updateForecast();
 }
 
 void MiningFrame::onBlockFoundByMiner(quint64 _reward) {
+  // Authoritative per-rig found-block event from this node's own miner. Coinbase
+  // receipts are deliberately NOT used here: with several rigs on one address the
+  // wallet cannot tell which rig found the block.
   ++m_sessionBlocks;
-  // Re-anchor the expected-time progress bar: the search for the next block
-  // starts now.
+  ++m_lifetimeBlocks;
+  m_lifetimeReward += _reward;
+  const qint64 now = QDateTime::currentSecsSinceEpoch();
+  m_recentBlockTimes.append(now);
+  m_lifetimeStatsReady = true;
+
+  // Persist the rig-level lifetime totals so they survive restarts.
+  Settings::instance().recordMinedBlock(_reward, now);
+
+  // Re-anchor the expected-time progress bar and the Luck read-out: the search for
+  // the next block starts now, so the accumulated round work resets too (otherwise
+  // Luck keeps climbing across blocks instead of restarting each search).
   m_lastBlockFoundAt = QDateTime::currentDateTime();
+  m_roundHashes = 0;
 
   const QString reward = CurrencyAdapter::instance().formatAmount(_reward);
   const QString ticker = CurrencyAdapter::instance().getCurrencyTicker();
   appendMiningEvent(QStringLiteral("BLOCK"), tr("Block found! Reward %1 %2 — nice work").arg(reward, ticker));
   addHashRateEventMarker(true);
+  updateForecast();
 }
 
 void MiningFrame::updateCpuIntensity() {
@@ -857,10 +824,8 @@ void MiningFrame::walletOpened() {
 
   m_wallet_closed = false;
 
-  // Re-derive lifetime blocks/reward from this wallet's coinbase history. The
-  // first scan just captures the baseline (historical blocks are not announced).
-  resetLifetimeStats();
-  scanLifetimeStats(false);
+  // Lifetime mining stats are rig-level and persisted in Settings, independent of
+  // which wallet is open, so nothing to re-derive here.
 
   quint64 difficulty = NodeAdapter::instance().getDifficulty();
   updateDifficulty(difficulty);
@@ -869,7 +834,6 @@ void MiningFrame::walletOpened() {
 void MiningFrame::walletClosed() {
   //stopSolo();
   m_wallet_closed = true;
-  resetLifetimeStats();
   updateForecast();
   //m_ui->m_startSolo->setEnabled(false);
   //m_ui->m_stopSolo->isChecked();
@@ -1078,9 +1042,6 @@ void MiningFrame::onSynchronizationCompleted() {
     m_ui->m_startSolo->setEnabled(false);
     return;
   }
-  // A full sync may have brought in coinbase transactions (blocks we found);
-  // refresh lifetime stats and announce any found during this mining session.
-  scanLifetimeStats(true);
 
   enableSolo();
   tryResumeAfterNoPeers();
@@ -1092,20 +1053,6 @@ void MiningFrame::updateBalance(quint64 _balance) {
 
 void MiningFrame::updatePendingBalance(quint64 _balance) {
   Q_UNUSED(_balance);
-}
-
-void MiningFrame::onWalletTransactionsChanged() {
-  // A new/updated transaction may be a coinbase (a block we mined). Announce it
-  // if it appears while we are solo mining.
-  scanLifetimeStats(true);
-}
-
-void MiningFrame::onWalletTransactionsReset() {
-  // The whole transaction set was rebuilt (e.g. wallet reset/rescan): recount the
-  // baseline from scratch without announcing historical blocks.
-  resetLifetimeStats();
-  scanLifetimeStats(false);
-  updateForecast();
 }
 
 void MiningFrame::updateMinerLog(const QString& _message) {

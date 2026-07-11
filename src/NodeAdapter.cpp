@@ -349,6 +349,11 @@ void NodeAdapter::localBlockchainUpdated(Node& _node, uint64_t _height) {
   Q_EMIT localBlockchainUpdatedSignal(_height);
 }
 
+void NodeAdapter::blockFoundByMiner(Node& _node, uint64_t _reward) {
+  Q_UNUSED(_node);
+  Q_EMIT blockFoundByMinerSignal(_reward);
+}
+
 void NodeAdapter::lastKnownBlockHeightUpdated(Node& _node, uint64_t _height) {
   Q_UNUSED(_node);
   Q_EMIT lastKnownBlockHeightUpdatedSignal(_height);
