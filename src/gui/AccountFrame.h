@@ -9,6 +9,7 @@
 
 #include <QFont>
 #include <QFrame>
+#include <QList>
 
 class QEvent;
 class QLabel;
@@ -54,6 +55,7 @@ private:
   // would clip at the hero size. updateAccountNumberDisplay() picks between them.
   QFont m_accountNumberFont;
   QFont m_accountNumberStatusFont;
+  QList<QMenu*> m_copyContextMenus;
 
   void applyFramePalette();
   void updateWalletAddress(const QString& _address);

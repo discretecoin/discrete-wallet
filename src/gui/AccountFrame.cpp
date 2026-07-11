@@ -11,7 +11,6 @@
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
-#include <QMouseEvent>
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
@@ -22,7 +21,6 @@
 #include <QToolTip>
 #include <future>
 #include "AccountFrame.h"
-#include "LoggerAdapter.h"
 #include "WalletAdapter.h"
 #include "NodeAdapter.h"
 #include "CurrencyAdapter.h"
@@ -177,6 +175,9 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 
 AccountFrame::~AccountFrame() {
   closeRegistrationProgressDialog();
+  for (QMenu* menu : m_copyContextMenus) {
+    delete menu;
+  }
 }
 
 void AccountFrame::changeEvent(QEvent* _event) {
@@ -381,29 +382,24 @@ void AccountFrame::copyTextToClipboard(const QString& _text, QWidget* _anchor) {
 }
 
 void AccountFrame::installCopyContextMenu(QLabel* _label, const QString& _actionText, std::function<QString()> _textProvider) {
-  // DIAGNOSTIC: drop mouse text-interaction. These labels are the only ones in
-  // the app whose right-click menu misbehaves, and the only thing they have that
-  // the working QRLabel / item-view menus don't is TextSelectableByMouse — whose
-  // internal text control is the prime suspect for eating the menu's click.
+  // Selection would only expose the elided/rich display text, not the value that
+  // the copy action provides.
   _label->setTextInteractionFlags(Qt::NoTextInteraction);
 
-  // Mirror the working item-view menus (TransactionsFrame / InfoDialog) exactly:
-  // a persistent QMenu shown from customContextMenuRequested via exec(), with the
-  // copy done from the action's triggered() signal.
   _label->setContextMenuPolicy(Qt::CustomContextMenu);
-  QMenu* menu = new QMenu(this);
+  // Keep this a top-level popup, matching the working menus in TransactionsFrame
+  // and QRLabel. With Qlementine on Windows, a QMenu parented to AccountFrame
+  // flashes its action but loses the synthetic release used to trigger it.
+  QMenu* menu = new QMenu();
+  m_copyContextMenus.append(menu);
   QAction* copyAction = menu->addAction(_actionText);
   connect(copyAction, &QAction::triggered, this, [this, _label, _textProvider]() {
-    const QString text = _textProvider();
-    LoggerAdapter::instance().log(std::string("[copymenu] action triggered, textLen=") + std::to_string(text.size()));
-    copyTextToClipboard(text, _label);
+    copyTextToClipboard(_textProvider(), _label);
   });
   connect(_label, &QLabel::customContextMenuRequested, this,
     [_label, menu, copyAction, _textProvider](const QPoint& _pos) {
       copyAction->setEnabled(!_textProvider().isEmpty());
-      LoggerAdapter::instance().log("[copymenu] customContextMenuRequested -> exec");
       menu->exec(_label->mapToGlobal(_pos));
-      LoggerAdapter::instance().log("[copymenu] exec returned");
     });
 }
 
