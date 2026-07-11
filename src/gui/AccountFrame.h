@@ -5,10 +5,13 @@
 
 #pragma once
 
+#include <functional>
+
 #include <QFont>
 #include <QFrame>
 
 class QEvent;
+class QLabel;
 class QMenu;
 class QProgressDialog;
 class QWidget;
@@ -64,6 +67,12 @@ private:
   void updateRegistrationProgressText(const QString& _stateText);
   void closeRegistrationProgressDialog();
   void copyTextToClipboard(const QString& _text, QWidget* _anchor);
+  // Attach a right-click "Copy" menu to a label. The copied text is resolved
+  // lazily by _textProvider on each right-click (address / account number /
+  // balance change over the frame's lifetime), and the action is disabled when
+  // that text is empty.
+  void installCopyContextMenu(QLabel* _label, const QString& _actionText, std::function<QString()> _textProvider);
+  QString balanceCopyText(quint64 _amount) const;
 
   QStringList divideAmount(quint64 _val);
 

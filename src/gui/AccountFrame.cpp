@@ -4,11 +4,14 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <QAction>
 #include <QClipboard>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QLabel>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMessageBox>
@@ -19,6 +22,7 @@
 #include <QToolTip>
 #include <future>
 #include "AccountFrame.h"
+#include "LoggerAdapter.h"
 #include "WalletAdapter.h"
 #include "NodeAdapter.h"
 #include "CurrencyAdapter.h"
@@ -141,20 +145,24 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_addressLabel->setFont(addressFont);
   m_ui->m_addressLabel->setWordWrap(false);
   m_ui->m_addressLabel->setTextFormat(Qt::PlainText);
+  // Click-focus so the label still receives Ctrl+C (installCopyContextMenu clears
+  // text interaction, which would otherwise drop the label's focus policy). The
+  // event filter below then copies the full address on Ctrl+C.
+  m_ui->m_addressLabel->setFocusPolicy(Qt::ClickFocus);
   m_ui->m_addressLabel->installEventFilter(this);
-  // Right-click "Copy address" menu — same pattern as the original Karbo wallet.
-  m_ui->m_addressLabel->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(m_ui->m_addressLabel, &QLabel::customContextMenuRequested, this, [this](const QPoint& _pos) {
-    QMenu menu(this);
-    QAction* copyAction = menu.addAction(tr("Copy address"));
-    copyAction->setEnabled(!m_address.isEmpty());
-
-    if (menu.exec(m_ui->m_addressLabel->mapToGlobal(_pos)) == copyAction) {
-      copyTextToClipboard(m_address, m_ui->m_addressLabel);
-    }
-  });
   m_ui->m_accountNumberLabel->setFont(m_accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
+
+  // Right-click "Copy" menus for every value in the sidebar.
+  installCopyContextMenu(m_ui->m_addressLabel, tr("Copy address"), [this]() { return m_address; });
+  installCopyContextMenu(m_ui->m_accountNumberLabel, tr("Copy account number"), [this]() { return m_accountNumber; });
+  installCopyContextMenu(m_ui->m_actualBalanceLabel, tr("Copy amount"),
+    [this]() { return balanceCopyText(WalletAdapter::instance().getActualBalance()); });
+  installCopyContextMenu(m_ui->m_pendingBalanceLabel, tr("Copy amount"),
+    [this]() { return balanceCopyText(WalletAdapter::instance().getPendingBalance()); });
+  installCopyContextMenu(m_ui->m_totalBalanceLabel, tr("Copy amount"),
+    [this]() { return balanceCopyText(WalletAdapter::instance().getActualBalance() + WalletAdapter::instance().getPendingBalance()); });
+
   m_ui->m_copyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyAccountNumberButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyButton->setIconSize(QSize(15, 15));
@@ -370,6 +378,38 @@ void AccountFrame::copyTextToClipboard(const QString& _text, QWidget* _anchor) {
   if (_anchor != nullptr) {
     QToolTip::showText(_anchor->mapToGlobal(_anchor->rect().center()), tr("Copied"), _anchor);
   }
+}
+
+void AccountFrame::installCopyContextMenu(QLabel* _label, const QString& _actionText, std::function<QString()> _textProvider) {
+  // DIAGNOSTIC: drop mouse text-interaction. These labels are the only ones in
+  // the app whose right-click menu misbehaves, and the only thing they have that
+  // the working QRLabel / item-view menus don't is TextSelectableByMouse — whose
+  // internal text control is the prime suspect for eating the menu's click.
+  _label->setTextInteractionFlags(Qt::NoTextInteraction);
+
+  // Mirror the working item-view menus (TransactionsFrame / InfoDialog) exactly:
+  // a persistent QMenu shown from customContextMenuRequested via exec(), with the
+  // copy done from the action's triggered() signal.
+  _label->setContextMenuPolicy(Qt::CustomContextMenu);
+  QMenu* menu = new QMenu(this);
+  QAction* copyAction = menu->addAction(_actionText);
+  connect(copyAction, &QAction::triggered, this, [this, _label, _textProvider]() {
+    const QString text = _textProvider();
+    LoggerAdapter::instance().log(std::string("[copymenu] action triggered, textLen=") + std::to_string(text.size()));
+    copyTextToClipboard(text, _label);
+  });
+  connect(_label, &QLabel::customContextMenuRequested, this,
+    [_label, menu, copyAction, _textProvider](const QPoint& _pos) {
+      copyAction->setEnabled(!_textProvider().isEmpty());
+      LoggerAdapter::instance().log("[copymenu] customContextMenuRequested -> exec");
+      menu->exec(_label->mapToGlobal(_pos));
+      LoggerAdapter::instance().log("[copymenu] exec returned");
+    });
+}
+
+QString AccountFrame::balanceCopyText(quint64 _amount) const {
+  return CurrencyAdapter::instance().formatAmount(_amount) + QLatin1Char(' ') +
+    CurrencyAdapter::instance().getCurrencyTicker().toUpper();
 }
 
 void AccountFrame::accountRegistrationCompleted(int _error, const QString& _errorText, const QString& _transactionHash) {
