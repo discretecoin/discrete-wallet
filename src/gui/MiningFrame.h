@@ -63,6 +63,12 @@ private:
   void initCpuCoreList();
   void startSolo();
   void stopSolo(bool _stoppedByNoPeers = false);
+  // Resume solo mining that was suspended because peers dropped, once the node is
+  // reconnected and synced. Mirrors the CLI daemon, whose built-in miner
+  // auto-restarts on re-synchronization; safe to call from any reconnect/sync
+  // event as it no-ops unless a resume is actually due.
+  void tryResumeAfterNoPeers();
+  bool nodeSynchronized() const;
 
   bool m_wallet_closed = false;
   bool m_solo_mining = false;
