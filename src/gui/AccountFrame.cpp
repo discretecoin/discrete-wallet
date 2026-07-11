@@ -34,6 +34,10 @@ namespace {
 constexpr int CAPTION_FONT_SIZE = 10;
 constexpr int ADDRESS_FONT_SIZE = 15;
 constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
+// Status messages shown in place of an account number ("Registration pending...",
+// "Not registered") are much longer than an account number, so they render at a
+// smaller size to fit the narrow sidebar instead of clipping at the hero size.
+constexpr int ACCOUNT_NUMBER_STATUS_FONT_SIZE = 14;
 // PQ addresses are ~3000-character bech32m strings — far too long to display
 // in full. Elide to a short prefix/suffix, like other crypto wallets; the full
 // address is always available via the copy button and context menu. The
@@ -124,9 +128,15 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   addressFont.setPixelSize(ADDRESS_FONT_SIZE);
   addressFont.setBold(true);
 
-  QFont accountNumberFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-  accountNumberFont.setPixelSize(ACCOUNT_NUMBER_VALUE_FONT_SIZE);
-  accountNumberFont.setBold(true);
+  m_accountNumberFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+  m_accountNumberFont.setPixelSize(ACCOUNT_NUMBER_VALUE_FONT_SIZE);
+  m_accountNumberFont.setBold(true);
+
+  // Proportional (default UI) font for status text — narrower than the fixed-width
+  // hero font and reads as a message rather than a value.
+  m_accountNumberStatusFont = font();
+  m_accountNumberStatusFont.setPixelSize(ACCOUNT_NUMBER_STATUS_FONT_SIZE);
+  m_accountNumberStatusFont.setBold(false);
 
   m_ui->m_addressLabel->setFont(addressFont);
   m_ui->m_addressLabel->setWordWrap(false);
@@ -143,7 +153,7 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
       copyTextToClipboard(m_address, m_ui->m_addressLabel);
     }
   });
-  m_ui->m_accountNumberLabel->setFont(accountNumberFont);
+  m_ui->m_accountNumberLabel->setFont(m_accountNumberFont);
   m_ui->m_accountNumberLabel->setTextFormat(Qt::PlainText);
   m_ui->m_copyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyAccountNumberButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -311,6 +321,7 @@ void AccountFrame::updateAccountNumberDisplay() {
       // We've already submitted a registration tx; show a transient hint
       // instead of the Register button so the user doesn't fire off
       // duplicate registrations while the first one is in mempool.
+      m_ui->m_accountNumberLabel->setFont(m_accountNumberStatusFont);
       m_ui->m_accountNumberLabel->setText(tr("Registration pending..."));
       QString tooltip = tr("A registration transaction has been sent. "
         "Your account number will appear here once it confirms.");
@@ -325,12 +336,14 @@ void AccountFrame::updateAccountNumberDisplay() {
     }
     m_ui->m_accountNumberLabel->setVisible(!canRegister);
     if (!canRegister) {
+      m_ui->m_accountNumberLabel->setFont(m_accountNumberStatusFont);
       m_ui->m_accountNumberLabel->setText(tr("Not registered"));
       m_ui->m_accountNumberLabel->setToolTip(tr("This wallet does not have a registered account number."));
     }
     m_ui->m_copyAccountNumberButton->setVisible(false);
     m_ui->m_registerAccountButton->setVisible(canRegister);
   } else {
+    m_ui->m_accountNumberLabel->setFont(m_accountNumberFont);
     m_ui->m_accountNumberLabel->setText(m_accountNumber);
     m_ui->m_accountNumberLabel->setToolTip(m_accountNumber);
     m_ui->m_accountNumberLabel->setVisible(true);

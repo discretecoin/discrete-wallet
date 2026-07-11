@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <QFont>
 #include <QFrame>
 
 class QEvent;
@@ -45,6 +46,11 @@ private:
   // change, and once a real account number arrives from the daemon.
   bool m_registrationPending;
   QProgressDialog* m_registrationProgressDialog;
+  // Large hero font for a real account number, and a smaller one for the status
+  // text ("Registration pending..." / "Not registered"), which is far longer and
+  // would clip at the hero size. updateAccountNumberDisplay() picks between them.
+  QFont m_accountNumberFont;
+  QFont m_accountNumberStatusFont;
 
   void applyFramePalette();
   void updateWalletAddress(const QString& _address);
