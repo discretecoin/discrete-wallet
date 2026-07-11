@@ -55,6 +55,27 @@ inline std::string interpret_rpc_response(bool ok, const std::string& status) {
   return err;
 }
 
+// The bumped Core takes the reject-deep-reorg depth as a constructor argument
+// (it feeds both the blockchain and its internal checkpoints). Checkpoints::
+// operator= no longer copies that depth, so set_checkpoints() can not deliver it
+// after construction any more — it has to be computed up front and handed to the
+// Core constructor. This mirrors the daemon's own gating: disabled in testnet /
+// without-checkpoints modes, otherwise honouring --reject-deep-reorg (a value of
+// 0 meaning "use the mined-money unlock window").
+uint32_t computeRejectDeepReorgDepth(const CryptoNote::Currency& currency) {
+  if (Settings::instance().withoutCheckpoints() || Settings::instance().isTestnet()) {
+    return 0;
+  }
+  if (!Settings::instance().hasRejectDeepReorg()) {
+    return 0;
+  }
+  uint32_t depth = Settings::instance().rejectDeepReorg();
+  if (depth == 0) {
+    depth = static_cast<uint32_t>(currency.minedMoneyUnlockWindow());
+  }
+  return depth;
+}
+
 }
 
 Node::~Node() {
@@ -269,7 +290,7 @@ public:
     m_rpcServerConfig(rpcServerConfig),
     m_rpcServer(nullptr),
     m_protocolHandler(currency, m_dispatcher, m_core, nullptr, logManager),
-    m_core(currency, &m_protocolHandler, logManager, m_dispatcher, false, false),
+    m_core(currency, &m_protocolHandler, logManager, m_dispatcher, computeRejectDeepReorgDepth(currency)),
     m_nodeServer(m_dispatcher, m_protocolHandler, logManager),
     m_node(m_core, m_protocolHandler)
   {
@@ -279,12 +300,12 @@ public:
       } else if (Settings::instance().isTestnet()) {
         m_logger(Logging::INFO) << "Running in Testnet mode";
       } else {
-        quint32 rejectDeepReorg = 0;
-        if (Settings::instance().hasRejectDeepReorg()) {
-          rejectDeepReorg = Settings::instance().rejectDeepReorg();
-          if (rejectDeepReorg == 0) {
-            rejectDeepReorg = m_currency.minedMoneyUnlockWindow();
-          }
+        // The depth is already applied through the Core constructor above; here we
+        // only build and install the checkpoint set. The depth handed to this
+        // Checkpoints object is cosmetic (Checkpoints::operator= drops it in
+        // set_checkpoints), but we keep it consistent with the core's value.
+        const uint32_t rejectDeepReorg = computeRejectDeepReorgDepth(m_currency);
+        if (rejectDeepReorg > 0) {
           m_logger(Logging::WARNING) << "Deep reorganization exceeding " << rejectDeepReorg << " blocks will be rejected";
         }
         CryptoNote::Checkpoints checkpoints(logManager, rejectDeepReorg);
