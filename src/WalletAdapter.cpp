@@ -918,7 +918,7 @@ QString WalletAdapter::walletErrorMessage(int _error_code) {
     case CryptoNote::error::WalletErrorCodes::DESTINATION_ADDRESS_NOT_FOUND: return tr("Destination address not found");
     case CryptoNote::error::WalletErrorCodes::BAD_PAYMENT_ID:                return tr("Wrong transaction extra format");
     case CryptoNote::error::WalletErrorCodes::BAD_TRANSACTION_EXTRA:         return tr("Wrong transaction extra format");
-    case CryptoNote::error::WalletErrorCodes::INSUFFICIENT_FUNDS:            return tr("Insufficient funds");
+    case CryptoNote::error::WalletErrorCodes::INSUFFICIENT_FUNDS:            return tr("Insufficient available balance. Some funds may still be awaiting confirmation or coinbase maturity.");
     case CryptoNote::error::WalletErrorCodes::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION: return tr("Amount is too large for one transaction (too many inputs or the transaction-size limit). Send a smaller amount or consolidate your outputs first.");
     case CryptoNote::error::WalletErrorCodes::ACCOUNT_NOT_REGISTERED:        return tr("That account number is not registered on chain");
     default:                                                                 return tr("Unknown error");

@@ -256,7 +256,7 @@ void AccountFrame::updateActualBalance(quint64 _balance) {
 }
 
 void AccountFrame::updatePendingBalance(quint64 _balance) {
-  m_ui->m_pendingBalanceLabel->setText(formatSecondaryBalance(tr("Pending"), divideAmount(_balance).first()));
+  m_ui->m_pendingBalanceLabel->setText(formatSecondaryBalance(tr("Locked"), divideAmount(_balance).first()));
 
   quint64 actualBalance = WalletAdapter::instance().getActualBalance();
   m_ui->m_totalBalanceLabel->setText(formatSecondaryBalance(tr("Total"), divideAmount(_balance + actualBalance).first()));

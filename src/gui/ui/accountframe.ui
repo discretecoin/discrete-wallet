@@ -302,10 +302,10 @@
         <item>
          <widget class="QLabel" name="m_pendingBalanceLabel">
           <property name="toolTip">
-           <string>Awaiting network confirmation</string>
+           <string>Awaiting network confirmation or coinbase maturity</string>
           </property>
           <property name="text">
-           <string notr="true">Pending: 0.00 XDS</string>
+           <string notr="true">Locked: 0.00 XDS</string>
           </property>
           <property name="textFormat">
            <enum>Qt::TextFormat::RichText</enum>

@@ -13,6 +13,8 @@
 #include <QTime>
 #include <QUrl>
 
+#include <limits>
+
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
 #include "AddressBookModel.h"
 #include "CurrencyAdapter.h"
@@ -212,11 +214,12 @@ void SendFrame::parsePaymentRequest(QString _request) {
 void SendFrame::sendClicked() {
   amountValueChanged();
 
-  quint64 actualBalance = WalletAdapter::instance().getActualBalance();
-  if (actualBalance <= NodeAdapter::instance().getMinimalFee()) {
+  const quint64 actualBalance = WalletAdapter::instance().getActualBalance();
+  const quint64 minimumFee = NodeAdapter::instance().getMinimalFee();
+  if (actualBalance <= minimumFee) {
     QCoreApplication::postEvent(
       &MainWindow::instance(),
-      new ShowMessageEvent(tr("Insufficient balance."), QtCriticalMsg));
+      new ShowMessageEvent(tr("Insufficient available balance. Funds shown as Locked cannot be spent until they are confirmed and mature."), QtCriticalMsg));
     return;
   }
 
@@ -263,11 +266,21 @@ void SendFrame::sendClicked() {
   }
 
   quint64 total_transaction_amount = 0;
-  for (size_t i = 0; i < walletTransfers.size(); i++) {
-    total_transaction_amount += walletTransfers.at(i).amount;
+  for (const auto& transfer : walletTransfers) {
+    const quint64 amount = static_cast<quint64>(transfer.amount);
+    if (amount > std::numeric_limits<quint64>::max() - total_transaction_amount) {
+      QMessageBox::critical(this, tr("Invalid amount"), tr("The total amount is too large."), QMessageBox::Ok);
+      return;
+    }
+    total_transaction_amount += amount;
   }
-  if (total_transaction_amount > (WalletAdapter::instance().getActualBalance() - fee)) {
-    QMessageBox::critical(this, tr("Insufficient balance"), tr("Available balance is insufficient to send this transaction. Have you excluded a fee?"), QMessageBox::Ok);
+  // Auto-fee is encoded as zero for the backend, but the preflight must still
+  // reserve at least the network floor. Check before subtracting to avoid an
+  // unsigned underflow when a manual fee itself exceeds the available balance.
+  const quint64 requiredFee = m_ui->m_manualFeeCheckBox->isChecked() ? fee : minimumFee;
+  if (requiredFee > actualBalance || total_transaction_amount > actualBalance - requiredFee) {
+    QMessageBox::critical(this, tr("Insufficient available balance"),
+      tr("Available balance is insufficient to cover the amount and fee. Funds shown as Locked cannot be spent until they are confirmed and mature."), QMessageBox::Ok);
     return;
   }
 
