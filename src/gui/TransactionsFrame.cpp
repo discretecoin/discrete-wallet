@@ -35,8 +35,9 @@ TransactionsFrame::TransactionsFrame(QWidget* _parent) : QFrame(_parent), m_ui(n
   m_ui->m_transactionsView->header()->setSectionResizeMode(TransactionsModel::COLUMN_STATE, QHeaderView::Fixed);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_STATE, 25);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_DATE, 90);
+  m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_AMOUNT, 90);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_FEE, 45);
-  m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_ADDRESS, 100);
+  m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_ADDRESS, 200);
   m_ui->m_transactionsView->header()->resizeSection(TransactionsModel::COLUMN_HASH, 200);
 
   connect(m_ui->m_transactionsView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &TransactionsFrame::computeSelected);
