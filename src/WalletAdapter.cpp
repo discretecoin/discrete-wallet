@@ -28,6 +28,7 @@
 #include "AccountNumber.h"
 #include "PqAddress.h"
 #include "Wallet/PqRecipient.h"
+#include "Wallet/PqSender.h"
 #include "Wallet/PqTransactionBuilder.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 #include "CryptoNoteCore/PqValidation.h"
@@ -443,6 +444,29 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
     // the GUI does not need to pre-resolve it. Mixin and payment IDs no longer
     // exist in the PQ design, so both trailing parameters stay at 0.
     m_wallet->sendTransaction(_transfers, _fee, "", 0, 0);
+  } catch (const CryptoNote::PqSendError& _error) {
+    int code = CryptoNote::error::INTERNAL_WALLET_ERROR;
+    switch (_error.code) {
+      case CryptoNote::PqSendErrorCode::InsufficientFunds:
+        code = CryptoNote::error::INSUFFICIENT_FUNDS;
+        break;
+      case CryptoNote::PqSendErrorCode::TooLarge:
+        code = CryptoNote::error::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION;
+        break;
+      case CryptoNote::PqSendErrorCode::ZeroAmount:
+        code = CryptoNote::error::WRONG_AMOUNT;
+        break;
+      case CryptoNote::PqSendErrorCode::NoRecipients:
+      case CryptoNote::PqSendErrorCode::UnsupportedUnlockHeight:
+        code = CryptoNote::error::WRONG_PARAMETERS;
+        break;
+    }
+
+    m_logger(Logging::WARNING) << "PQ transaction could not be sent: " << _error.what();
+    unlock();
+    Q_EMIT walletSendTransactionCompletedSignal(
+      CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID, code, walletErrorMessage(code));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
   } catch (std::system_error& _error) {
     // A synchronous failure (an unresolvable account number -> BAD_ADDRESS,
     // insufficient funds, a relay error, …) is thrown here rather than delivered
@@ -453,6 +477,17 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
     const int code = _error.code().value();
     Q_EMIT walletSendTransactionCompletedSignal(
       CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID, code, walletErrorMessage(code));
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+  } catch (const std::exception& _error) {
+    // Keep unexpected builder/signing failures inside the GUI boundary. These are
+    // synchronous, so without this guard a runtime_error would unwind through the
+    // Qt event handler and terminate the application.
+    m_logger(Logging::ERROR) << "Unexpected error while sending transaction: " << _error.what();
+    unlock();
+    const int code = CryptoNote::error::INTERNAL_WALLET_ERROR;
+    Q_EMIT walletSendTransactionCompletedSignal(
+      CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID, code,
+      tr("Failed to send transaction: %1").arg(QString::fromUtf8(_error.what())));
     Q_EMIT updateBlockStatusTextWithDelaySignal();
   }
 }
@@ -884,7 +919,7 @@ QString WalletAdapter::walletErrorMessage(int _error_code) {
     case CryptoNote::error::WalletErrorCodes::BAD_PAYMENT_ID:                return tr("Wrong transaction extra format");
     case CryptoNote::error::WalletErrorCodes::BAD_TRANSACTION_EXTRA:         return tr("Wrong transaction extra format");
     case CryptoNote::error::WalletErrorCodes::INSUFFICIENT_FUNDS:            return tr("Insufficient funds");
-    case CryptoNote::error::WalletErrorCodes::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION: return tr("Amount is too large for one transaction");
+    case CryptoNote::error::WalletErrorCodes::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION: return tr("Amount is too large for one transaction (too many inputs or the transaction-size limit). Send a smaller amount or consolidate your outputs first.");
     case CryptoNote::error::WalletErrorCodes::ACCOUNT_NOT_REGISTERED:        return tr("That account number is not registered on chain");
     default:                                                                 return tr("Unknown error");
   }
