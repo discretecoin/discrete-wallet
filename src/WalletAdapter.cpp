@@ -15,7 +15,6 @@
 #include <QDebug>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <future>
 #include <thread>
@@ -60,35 +59,6 @@ constexpr std::chrono::seconds ACCOUNT_REGISTRATION_RELAY_TIMEOUT(60);
 
 uint32_t freeRegPowWorkerCount() {
   return std::max(1u, std::thread::hardware_concurrency());
-}
-
-uint64_t grindFreeRegPowParallel(const std::array<uint8_t, 1184>& viewPub, const Crypto::Hash& refBlockHash,
-                                 uint32_t workerCount) {
-  std::atomic<bool> found(false);
-  std::atomic<uint64_t> result(0);
-  std::vector<std::thread> workers;
-  workers.reserve(workerCount);
-
-  for (uint32_t worker = 0; worker < workerCount; ++worker) {
-    workers.emplace_back([&, worker]() {
-      uint64_t nonce = worker;
-      while (!found.load(std::memory_order_relaxed)) {
-        if (CryptoNote::checkFreeRegPow(viewPub, refBlockHash, nonce)) {
-          result.store(nonce, std::memory_order_relaxed);
-          found.store(true, std::memory_order_release);
-          return;
-        }
-
-        nonce += workerCount;
-      }
-    });
-  }
-
-  for (std::thread& worker : workers) {
-    worker.join();
-  }
-
-  return result.load(std::memory_order_relaxed);
 }
 
 WalletAdapter& WalletAdapter::instance() {
@@ -609,7 +579,7 @@ void WalletAdapter::doRegisterAccountNumber(AccountRegistrationMode _mode) {
 
     const uint32_t workerCount = freeRegPowWorkerCount();
     Q_EMIT walletStateChangedSignal(tr("Solving registration proof-of-work (%1 threads)").arg(workerCount));
-    const uint64_t nonce = grindFreeRegPowParallel(pq.viewPub, headerInfo.hash, workerCount);
+    const uint64_t nonce = CryptoNote::grindFreeRegPow(pq.viewPub, pq.spendPub, headerInfo.hash);
     const CryptoNote::Transaction tx = CryptoNote::buildFreeRegTransaction(pq.viewPub, pq.spendPub, headerInfo.hash, nonce);
 
     Q_EMIT walletStateChangedSignal(tr("Relaying free registration"));
