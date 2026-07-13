@@ -24,6 +24,7 @@
 #include "System/Dispatcher.h"
 #include "Wallet/WalletRpcServer.h"
 #include "Wallet/PqWallet.h"
+#include "Wallet/SentPaymentsStore.h"
 #include "crypto_pq/PqKem.h"
 #include "crypto_pq/PqDsa.h"
 
@@ -57,6 +58,10 @@ public:
   quint64 getTransferCount() const;
   bool getTransaction(CryptoNote::TransactionId& _id, CryptoNote::WalletLegacyTransaction& _transaction);
   bool getTransfer(CryptoNote::TransferId& _id, CryptoNote::WalletLegacyTransfer& _transfer);
+  // Payer-side recipients + off-chain payment proofs recorded for a sent transaction
+  // (empty/false for incoming or pre-feature sends). Concrete WalletLegacy state, so
+  // this reaches through to it; copies out so the caller never touches wallet internals.
+  bool getPaymentProofs(const Crypto::Hash& _txid, CryptoNote::SentPaymentRecord& _record) const;
   bool getAccountKeys(CryptoNote::AccountKeys& _keys);
   size_t getUnlockedOutputsCount();
 

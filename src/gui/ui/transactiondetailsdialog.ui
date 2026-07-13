@@ -33,6 +33,16 @@
       </spacer>
      </item>
      <item>
+      <widget class="QPushButton" name="m_copyProofButton">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>Copy Payment Proof</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="m_closeButton">
        <property name="text">
         <string>Close</string>

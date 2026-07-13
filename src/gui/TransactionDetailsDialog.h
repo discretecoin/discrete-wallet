@@ -20,9 +20,15 @@ public:
   TransactionDetailsDialog(const QModelIndex &_index, QWidget* _parent);
   ~TransactionDetailsDialog();
 
+private Q_SLOTS:
+  void copyProof();
+
 private:
   QScopedPointer<Ui::TransactionDetailsDialog> m_ui;
   const QString m_detailsTemplate;
+  // The payment proof(s) for this transaction, joined for the clipboard; empty when
+  // the tx carries none (incoming, or a send made before proofs were recorded).
+  QString m_proofText;
 };
 
 }

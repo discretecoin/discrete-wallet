@@ -398,6 +398,17 @@ bool WalletAdapter::getAccountKeys(CryptoNote::AccountKeys& _keys) {
   return false;
 }
 
+bool WalletAdapter::getPaymentProofs(const Crypto::Hash& _txid, CryptoNote::SentPaymentRecord& _record) const {
+  // copyPaymentProofs is concrete WalletLegacy state (not on IWalletLegacy), so reach
+  // the concrete class the same way createTrackingWallet does. copyPaymentProofs takes
+  // the cache lock and copies out, so this is safe to call from the GUI thread.
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr) {
+    return false;
+  }
+  return wallet->copyPaymentProofs(_txid, _record);
+}
+
 std::vector<CryptoNote::TransactionOutputInformation> WalletAdapter::getOutputs() {
   Q_CHECK_PTR(m_wallet);
   try {

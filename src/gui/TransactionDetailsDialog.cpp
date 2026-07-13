@@ -3,6 +3,9 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <cstring>
+#include <QApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include "crypto/crypto.h"
 #include "CurrencyAdapter.h"
@@ -12,6 +15,7 @@
 #include "WalletAdapter.h"
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
+#include "Wallet/SentPaymentsStore.h"
 #include "TransactionsModel.h"
 
 #include "ui_transactiondetailsdialog.h"
@@ -56,10 +60,58 @@ TransactionDetailsDialog::TransactionDetailsDialog(const QModelIndex& _index, QW
 
   QString transactionHash = index.sibling(index.row(), TransactionsModel::COLUMN_HASH).data().toString();
 
-  m_ui->m_detailsBrowser->setHtml(m_detailsTemplate.arg(state).
+  QString html = m_detailsTemplate.arg(state).
     arg(index.sibling(index.row(), TransactionsModel::COLUMN_DATE).data().toString()).arg(index.sibling(index.row(),
     TransactionsModel::COLUMN_ADDRESS).data().toString()).arg(amountText).arg(feeText).
-    arg(transactionHash));
+    arg(transactionHash);
+
+  // Payer-side recipients and their off-chain payment proofs, captured at send time.
+  // Present only for outgoing transactions this wallet sent; the History "To" column
+  // above shows an elided address, so here we surface the full address, the amount to
+  // each recipient, and the copyable proof string (disctxp1…) verifiers consume.
+  QByteArray hashBytes = index.data(TransactionsModel::ROLE_HASH).toByteArray();
+  Crypto::Hash txid;
+  if (hashBytes.size() == static_cast<int>(sizeof(txid))) {
+    std::memcpy(&txid, hashBytes.constData(), sizeof(txid));
+    CryptoNote::SentPaymentRecord record;
+    if (WalletAdapter::instance().getPaymentProofs(txid, record) && !record.recipients.empty()) {
+      QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
+      QString extra = QStringLiteral(
+        "<p><span style=\" font-weight:600;\">Recipients &amp; payment proofs:</span></p>");
+      QStringList proofs;
+      for (const CryptoNote::SentPaymentEntry& r : record.recipients) {
+        QString address = QString::fromStdString(r.address).toHtmlEscaped();
+        QString amount = CurrencyAdapter::instance().formatAmount(r.amount) + " " + ticker;
+        extra += QStringLiteral("<p><span style=\" font-weight:600;\">Address: </span>%1<br>\n"
+                                "<span style=\" font-weight:600;\">Amount: </span>%2")
+                     .arg(address, amount);
+        if (!r.proof.empty()) {
+          QString proof = QString::fromStdString(r.proof);
+          proofs << proof;
+          extra += QStringLiteral(
+                       "<br>\n<span style=\" font-weight:600;\">Payment proof: </span>"
+                       "<span style=\"font-family:monospace; word-break:break-all;\">%1</span>")
+                       .arg(proof.toHtmlEscaped());
+        }
+        extra += QStringLiteral("</p>");
+      }
+      html.insert(html.lastIndexOf(QStringLiteral("</body>")), extra);
+
+      if (!proofs.isEmpty()) {
+        m_proofText = proofs.join(QChar('\n'));
+        m_ui->m_copyProofButton->setVisible(true);
+        connect(m_ui->m_copyProofButton, &QPushButton::clicked, this, &TransactionDetailsDialog::copyProof);
+      }
+    }
+  }
+
+  m_ui->m_detailsBrowser->setHtml(html);
+}
+
+void TransactionDetailsDialog::copyProof() {
+  if (!m_proofText.isEmpty()) {
+    QApplication::clipboard()->setText(m_proofText);
+  }
 }
 
 TransactionDetailsDialog::~TransactionDetailsDialog() {
