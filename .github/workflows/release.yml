@@ -55,12 +55,12 @@ jobs:
         run: |
           $build_folder = "build"
           $krb_ver = "${{ github.ref }}" -replace '[refs/tags/]'
-          $release_name = "Karbo-wallet-win64-$krb_ver"
+          $release_name = "Discrete-wallet-win64-$krb_ver"
           $qt5_cmake = "${{ env.Qt5_Dir }}/lib/cmake" -replace '[/]', '\\'
           $env:CMAKE_PREFIX_PATH = $qt5_cmake
           cmake -S . -B "$build_folder" -DBOOST_ROOT="$env:BOOST_ROOT" -DBOOST_INCLUDE_DIRS="$env:BOOST_ROOT/include" -G "Ninja Multi-Config" -DARCH=default
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build "$build_folder" --config Release --parallel --target KarbowanecWallet
+          cmake --build "$build_folder" --config Release --parallel --target DiscreteWallet
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cd "$build_folder"
           $build_path = "./$build_folder"
@@ -83,12 +83,12 @@ jobs:
           mkdir "$release_folder/$release_name/languages"
           cp languages/*.qm "$release_folder/$release_name/languages/"
           cd "$release_folder"
-          cp KarbowanecWallet.exe "$release_name/"
+          cp DiscreteWallet.exe "$release_name/"
           cp "C:/Program Files/OpenSSL/bin/libssl*.dll" "$release_name/"
           cp "C:/Program Files/OpenSSL/bin/libcrypto*.dll" "$release_name/"
           cp "../../COPYING" "$release_name/LICENSE.txt"
           cp "../../*.bat" "$release_name/"
-          windeployqt --release KarbowanecWallet.exe --dir "$release_name/"
+          windeployqt --release DiscreteWallet.exe --dir "$release_name/"
           Compress-Archive -Path "$release_name/" -DestinationPath "$release_name.zip"
           $sha256a = (Get-FileHash "$release_name.zip").Hash
           $asset_path_archive = "./$build_folder/$release_folder/$release_name.zip"
@@ -98,7 +98,7 @@ jobs:
           cd ../
           makensis WindowsInstall.nsi
           cd "$release_folder"
-          Compress-Archive -Path "KarbowanecWallet-Setup.exe" -DestinationPath "$release_name-install.zip"
+          Compress-Archive -Path "DiscreteWallet-Setup.exe" -DestinationPath "$release_name-install.zip"
           $sha256i = (Get-FileHash "$release_name-install.zip").Hash
           $asset_path_install = "./$build_folder/$release_folder/$release_name-install.zip"
           echo "sha256i=${sha256i}" >> $env:GITHUB_OUTPUT
@@ -110,7 +110,7 @@ jobs:
         uses: softprops/action-gh-release@v0.1.15
         with:
           files: ${{ steps.pack.outputs.asset_path_archive }}
-          name: Karbo Wallet ${{ steps.pack.outputs.krb_ver }}
+          name: Discrete Wallet ${{ steps.pack.outputs.krb_ver }}
           append_body: true
           body: |
             **${{ steps.pack.outputs.release_name_archive }}**
@@ -122,7 +122,7 @@ jobs:
         uses: softprops/action-gh-release@v0.1.15
         with:
           files: ${{ steps.pack.outputs.asset_path_install }}
-          name: Karbo Wallet ${{ steps.pack.outputs.krb_ver }}
+          name: Discrete Wallet ${{ steps.pack.outputs.krb_ver }}
           append_body: true
           body: |
             **${{ steps.pack.outputs.release_name_install }}**
@@ -172,8 +172,8 @@ jobs:
           Boost_LIBRARY_DIR=$BOOST_ROOT/lib
           build_folder="build/release"
           krb_ver=$(echo ${{ github.ref }} | sed 's|refs/tags/||')
-          release_name="Karbo-wallet-macOS-$krb_ver"
-          app_name="KarbowanecWallet.app"
+          release_name="Discrete-wallet-macOS-$krb_ver"
+          app_name="DiscreteWallet.app"
           lang_folder="/Contents/Resources/languages"
           mkdir -p "$build_folder"
           cd "$build_folder"
@@ -210,7 +210,7 @@ jobs:
         uses: softprops/action-gh-release@v0.1.15
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo Wallet ${{ steps.build.outputs.krb_ver }}
+          name: Discrete Wallet ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             **${{ steps.build.outputs.release_name }}**
@@ -231,7 +231,7 @@ jobs:
         id: appimage
         run: |
           krb_version=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          appimage_name=Karbo-wallet-"$krb_version".AppImage
+          appimage_name=Discrete-wallet-"$krb_version".AppImage
           docker run --rm \
             -e QT_VERSION=6.8.3 \
             -v "$PWD:/workspace" \
@@ -249,7 +249,7 @@ jobs:
         uses: softprops/action-gh-release@v0.1.15
         with:
           files: ${{ steps.appimage.outputs.asset_path }}
-          name: Karbo Wallet ${{ steps.appimage.outputs.krb_ver }}
+          name: Discrete Wallet ${{ steps.appimage.outputs.krb_ver }}
           append_body: true
           body: |
             **${{ steps.appimage.outputs.artifact_name }}**
@@ -270,7 +270,7 @@ jobs:
         id: build
         run: |
           krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name=Karbo-wallet-linux-amd64-"$krb_ver"
+          release_name=Discrete-wallet-linux-amd64-"$krb_ver"
           docker run --rm \
             -e QT_VERSION=6.8.3 \
             -v "$PWD:/workspace" \
@@ -288,7 +288,7 @@ jobs:
         uses: softprops/action-gh-release@v0.1.15
         with:
           files: ${{ steps.build.outputs.asset_path }}
-          name: Karbo Wallet ${{ steps.build.outputs.krb_ver }}
+          name: Discrete Wallet ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
             **${{ steps.build.outputs.release_name }}**

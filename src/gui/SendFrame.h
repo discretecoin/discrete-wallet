@@ -56,6 +56,7 @@ private:
   Q_SLOT void sendClicked();
   Q_SLOT void advancedClicked(bool _show);
   Q_SLOT void feeOverrideToggled(bool _override);
+  Q_SLOT void dontRelayToggled(bool _dontRelay);
 
 Q_SIGNALS:
   void uriOpenSignal();

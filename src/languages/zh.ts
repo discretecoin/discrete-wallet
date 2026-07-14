@@ -1386,8 +1386,8 @@ Please wait...</source>
     </message>
     <message>
         <location filename="../gui/ui/nowalletframe.ui" line="62"/>
-        <source>Welcome to Karbo Wallet!</source>
-        <translation>欢迎来到Karbo钱包！</translation>
+        <source>Welcome to Discrete Wallet!</source>
+        <translation>欢迎使用 Discrete 钱包！</translation>
     </message>
     <message>
         <location filename="../gui/ui/nowalletframe.ui" line="121"/>

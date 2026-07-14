@@ -1,23 +1,23 @@
-**1. Clone wallet sources**
+# Discrete Wallet
+
+## Build
+
+Clone the wallet and its Discrete core submodule:
 
 ```
-git clone https://github.com/seredat/karbowanecwallet.git
+git clone --recurse-submodules https://github.com/aivve/DiscreteWallet.git
+cd DiscreteWallet
 ```
 
-**2. Set symbolic link to coin sources at the same level as `src`. For example:**
+If the repository was cloned without submodules, initialize the core separately:
 
 ```
-ln -s ../karbowanec cryptonote
+git submodule update --init --recursive
 ```
 
-Alternative way is to create git submodule:
+Configure and build:
 
 ```
-git submodule add https://github.com/seredat/karbowanec.git cryptonote
-```
-
-**3. Build**
-
-```
-mkdir build && cd build && cmake .. && make
+cmake -S . -B build
+cmake --build build --config Release --parallel
 ```

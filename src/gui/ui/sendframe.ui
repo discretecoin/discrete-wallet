@@ -191,6 +191,16 @@
         </property>
        </widget>
       </item>
+      <item row="1" column="0" colspan="3">
+       <widget class="QCheckBox" name="dontRelayCheckBox">
+        <property name="toolTip">
+         <string>Build and sign the transaction, then show its raw hex without sending it to the network.</string>
+        </property>
+        <property name="text">
+         <string>Prepare transaction but do not relay</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -444,6 +454,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>dontRelayCheckBox</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>SendFrame</receiver>
+   <slot>dontRelayToggled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>432</x>
+     <y>514</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>432</x>
+     <y>294</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>sendClicked()</slot>
@@ -452,6 +478,7 @@
   <slot>feeValueChanged(double)</slot>
   <slot>advancedClicked(bool)</slot>
   <slot>feeOverrideToggled(bool)</slot>
+  <slot>dontRelayToggled(bool)</slot>
   <slot>setEnabled(bool)</slot>
  </slots>
 </ui>

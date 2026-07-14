@@ -71,6 +71,8 @@ public:
   std::vector<CryptoNote::TransactionSpentOutputInformation> getSpentOutputs();
 
   void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee);
+  QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                                quint64 _fee, QString* _errorText = nullptr);
 
   enum class AccountRegistrationMode {
     Free,

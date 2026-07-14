@@ -2,7 +2,7 @@
 set -euo pipefail
 
 artifact_kind="${1:?usage: $0 appimage|deb version}"
-krb_version="${2:?usage: $0 appimage|deb version}"
+xds_version="${2:?usage: $0 appimage|deb version}"
 qt_version="${QT_VERSION:-6.8.3}"
 build_parallel_level="${BUILD_PARALLEL_LEVEL:-2}"
 
@@ -91,14 +91,14 @@ cmake -S . -B "$build_folder" \
   -DBOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
   -DBOOST_ROOT=/usr
 cmake --build "$build_folder" --parallel "$build_parallel_level"
-xvfb-run -a "$build_folder/KarbowanecWallet" --version
+xvfb-run -a "$build_folder/DiscreteWallet" --version
 
 cd appimage
 chmod +x ./create-appimage.sh
 ./create-appimage.sh
-appimage_name="Karbo-wallet-$krb_version.AppImage"
+appimage_name="Discrete-wallet-$xds_version.AppImage"
 rm -f "$appimage_name"
-mv -f Karbo*.AppImage "$appimage_name"
+mv -f Discrete*.AppImage "$appimage_name"
 ls -l "$appimage_name"
 xvfb-run -a "./$appimage_name" --version
 cd ..
@@ -112,44 +112,45 @@ if [[ "$artifact_kind" != "deb" ]]; then
   exit 1
 fi
 
-deb_version="${krb_version#[vV]}"
+deb_version="${xds_version#[vV]}"
 deb_version="${deb_version#.}"
 if [[ ! "$deb_version" =~ ^[0-9] ]]; then
-  echo "Invalid Debian version derived from '$krb_version': '$deb_version'" >&2
+  echo "Invalid Debian version derived from '$xds_version': '$deb_version'" >&2
   exit 1
 fi
-release_name="Karbo-wallet-linux-amd64-$krb_version"
+release_name="Discrete-wallet-linux-amd64-$xds_version"
 pkgroot="build/debroot"
 rm -rf "$pkgroot"
-mkdir -p "$pkgroot/opt/karbo-wallet" \
+mkdir -p "$pkgroot/opt/discrete-wallet" \
   "$pkgroot/usr/share/applications" \
   "$pkgroot/usr/share/icons/hicolor/256x256/apps" \
   "$pkgroot/DEBIAN"
 
-cp -a appimage/AppDir/. "$pkgroot/opt/karbo-wallet/"
-cp appimage/AppDir/usr/share/applications/karbowanecwallet.desktop \
-  "$pkgroot/usr/share/applications/karbowanecwallet.desktop"
-sed -i 's|^Exec=.*|Exec=/opt/karbo-wallet/AppRun %U|' \
-  "$pkgroot/usr/share/applications/karbowanecwallet.desktop"
-sed -i 's|^Icon=.*|Icon=karbowanec|' \
-  "$pkgroot/usr/share/applications/karbowanecwallet.desktop"
-cp appimage/AppDir/usr/share/icons/hicolor/256x256/apps/karbowanec.png \
-  "$pkgroot/usr/share/icons/hicolor/256x256/apps/karbowanec.png"
+cp -a appimage/AppDir/. "$pkgroot/opt/discrete-wallet/"
+cp appimage/AppDir/usr/share/applications/discretewallet.desktop \
+  "$pkgroot/usr/share/applications/discretewallet.desktop"
+sed -i 's|^Exec=.*|Exec=/opt/discrete-wallet/AppRun %U|' \
+  "$pkgroot/usr/share/applications/discretewallet.desktop"
+sed -i 's|^Icon=.*|Icon=discrete|' \
+  "$pkgroot/usr/share/applications/discretewallet.desktop"
+cp appimage/AppDir/usr/share/icons/hicolor/256x256/apps/discrete.png \
+  "$pkgroot/usr/share/icons/hicolor/256x256/apps/discrete.png"
 
 installed_size="$(du -ks "$pkgroot" | cut -f1)"
 cat > "$pkgroot/DEBIAN/control" <<EOF
-Package: karbowanecwallet
+Package: discretewallet
 Version: $deb_version
 Section: utils
 Priority: optional
 Architecture: amd64
-Maintainer: Karbowanec-project <krbcoin@ukr.net>
+Maintainer: Discrete Developers <contact@discrete.cash>
 Installed-Size: $installed_size
 Depends: libc6 (>= 2.35), libgcc-s1, libstdc++6, libgl1, libx11-6, libxcb1, libxkbcommon-x11-0
-Description: Karbowanec KRB wallet
- Karbowanec is Ukrainian decentralized, privacy oriented peer-to-peer
- cryptocurrency.
+Description: Discrete XDS wallet
+ Discrete is a post-quantum-only cryptocurrency: a CryptoNote-family chain
+ in which every block and transaction is post-quantum from genesis. It is
+ open-source and decentralized, with no legacy elliptic-curve chain.
 EOF
 
 dpkg-deb --build "$pkgroot" "./appimage/$release_name.deb"
-xvfb-run -a "$pkgroot/opt/karbo-wallet/AppRun" --version
+xvfb-run -a "$pkgroot/opt/discrete-wallet/AppRun" --version

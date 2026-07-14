@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-APP=KarbowanecWallet
+APP=DiscreteWallet
 APPDIR=AppDir
 
 # Download tools
@@ -20,21 +20,21 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$APPDIR/usr/share/applications"
-mkdir -p "$APPDIR/usr/share/karbo/languages"
+mkdir -p "$APPDIR/usr/share/discrete/languages"
 
 # Copy binary
 cp "../build/release/$APP" "$APPDIR/usr/bin/"
 
 # Copy desktop file
-cp ../build/release/karbowanecwallet.desktop "$APPDIR/usr/share/applications/karbowanecwallet.desktop"
+cp ../build/release/discretewallet.desktop "$APPDIR/usr/share/applications/discretewallet.desktop"
 
 # Copy icon
-cp ../src/images/karbowanez.png \
-   "$APPDIR/usr/share/icons/hicolor/256x256/apps/karbowanec.png"
+cp ../src/images/discrete.png \
+   "$APPDIR/usr/share/icons/hicolor/256x256/apps/discrete.png"
 
 # Copy translations
 cp ../build/release/languages/*.qm \
-   "$APPDIR/usr/share/karbo/languages/"
+   "$APPDIR/usr/share/discrete/languages/"
 
 if command -v qmake6 >/dev/null 2>&1; then
   export QMAKE="$(command -v qmake6)"
@@ -56,7 +56,7 @@ export EXTRA_QT_MODULES="svg"
 ./linuxdeploy-x86_64.AppImage \
   --appdir "$APPDIR" \
   --executable "$APPDIR/usr/bin/$APP" \
-  --desktop-file "$APPDIR/usr/share/applications/karbowanecwallet.desktop" \
-  --icon-file "$APPDIR/usr/share/icons/hicolor/256x256/apps/karbowanec.png" \
+  --desktop-file "$APPDIR/usr/share/applications/discretewallet.desktop" \
+  --icon-file "$APPDIR/usr/share/icons/hicolor/256x256/apps/discrete.png" \
   --plugin qt \
   --output appimage

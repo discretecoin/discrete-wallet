@@ -33,13 +33,13 @@ TranslatorManager::TranslatorManager()
     QString appDir = qEnvironmentVariable("APPDIR");
     bool isAppImage = !appDir.isEmpty();
 
-    QString appImagePath = basePath + "/../share/karbo/languages";
+    QString appImagePath = basePath + "/../share/discrete/languages";
     QString localPath    = basePath + "/languages";
-    QString systemPath   = "/usr/share/karbo/languages";
+    QString systemPath   = "/usr/share/discrete/languages";
 
     if (isAppImage) {
         m_langPath = QDir(appImagePath).absolutePath();
-        m_langPath = appDir + "/usr/share/karbo/languages";
+        m_langPath = appDir + "/usr/share/discrete/languages";
         qDebug() << "AppImage detected! Using internal path:" << m_langPath;
     } else if (QDir(localPath).exists()) {
         m_langPath = QDir(localPath).absolutePath();

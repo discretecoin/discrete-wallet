@@ -1420,8 +1420,8 @@ Proszę czekać...</translation>
     </message>
     <message>
         <location filename="../gui/ui/nowalletframe.ui" line="62"/>
-        <source>Welcome to Karbo Wallet!</source>
-        <translation>Witaj w portfelu Karbowańca!</translation>
+        <source>Welcome to Discrete Wallet!</source>
+        <translation>Witaj w portfelu Discrete!</translation>
     </message>
     <message>
         <location filename="../gui/ui/nowalletframe.ui" line="121"/>

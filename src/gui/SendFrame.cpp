@@ -8,6 +8,7 @@
 #include <QRegularExpressionValidator>
 #include <QRegularExpression>
 #include <QInputDialog>
+#include <QIcon>
 #include <QMessageBox>
 #include <QUrlQuery>
 #include <QTime>
@@ -27,6 +28,7 @@
 #include "Settings.h"
 #include "OpenUriDialog.h"
 #include "ConfirmSendDialog.h"
+#include "ExportRawTxDialog.h"
 #include "PasswordDialog.h"
 #include <CryptoNoteConfig.h>
 
@@ -304,7 +306,25 @@ void SendFrame::sendClicked() {
   dlg.showPasymentDetails(m_totalAmount);
   if (dlg.exec() == QDialog::Accepted) {
     if (WalletAdapter::instance().isOpen()) {
-      WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+      if (m_ui->dontRelayCheckBox->isChecked()) {
+        QString errorText;
+        const QString rawTransaction = WalletAdapter::instance().prepareRawTransaction(
+            walletTransfers, fee, &errorText);
+        if (rawTransaction.isEmpty()) {
+          if (errorText.isEmpty()) {
+            errorText = tr("Failed to prepare transaction.");
+          }
+          QCoreApplication::postEvent(
+              &MainWindow::instance(), new ShowMessageEvent(errorText, QtCriticalMsg));
+          return;
+        }
+
+        ExportRawTransactionDialog rawDialog(&MainWindow::instance());
+        rawDialog.setTransaction(rawTransaction);
+        rawDialog.exec();
+      } else {
+        WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+      }
     }
   }
 }
@@ -317,6 +337,16 @@ void SendFrame::feeValueChanged(double _value) {
 void SendFrame::feeOverrideToggled(bool _override) {
   Q_UNUSED(_override);
   updateFeeEstimate();
+}
+
+void SendFrame::dontRelayToggled(bool _dontRelay) {
+  if (_dontRelay) {
+    m_ui->m_sendButton->setText(tr("Prepare"));
+    m_ui->m_sendButton->setIcon(QIcon(":/icons/save"));
+  } else {
+    m_ui->m_sendButton->setText(tr("Send"));
+    m_ui->m_sendButton->setIcon(QIcon(":/icons/btn-send"));
+  }
 }
 
 quint64 SendFrame::getFee() {

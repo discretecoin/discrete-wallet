@@ -473,6 +473,48 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
   }
 }
 
+QString WalletAdapter::prepareRawTransaction(
+    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+    quint64 _fee, QString* _errorText) {
+  Q_CHECK_PTR(m_wallet);
+  if (_errorText != nullptr) {
+    _errorText->clear();
+  }
+
+  lock();
+  Q_EMIT walletStateChangedSignal(tr("Preparing transaction"));
+  try {
+    CryptoNote::TransactionId transactionId = CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID;
+    const std::string raw = m_wallet->prepareRawTransaction(
+        transactionId, _transfers, _fee, "", 0, 0);
+    unlock();
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+    return QString::fromStdString(raw);
+  } catch (const CryptoNote::PqSendError& _error) {
+    m_logger(Logging::WARNING) << "PQ transaction could not be prepared: " << _error.what();
+    if (_errorText != nullptr) {
+      *_errorText = tr("Failed to prepare transaction: %1")
+          .arg(QString::fromUtf8(_error.what()));
+    }
+  } catch (const std::system_error& _error) {
+    m_logger(Logging::WARNING) << "Transaction could not be prepared: " << _error.what();
+    if (_errorText != nullptr) {
+      *_errorText = tr("Failed to prepare transaction: %1")
+          .arg(QString::fromUtf8(_error.what()));
+    }
+  } catch (const std::exception& _error) {
+    m_logger(Logging::ERROR) << "Unexpected error while preparing transaction: " << _error.what();
+    if (_errorText != nullptr) {
+      *_errorText = tr("Failed to prepare transaction: %1")
+          .arg(QString::fromUtf8(_error.what()));
+    }
+  }
+
+  unlock();
+  Q_EMIT updateBlockStatusTextWithDelaySignal();
+  return QString();
+}
+
 bool WalletAdapter::getOwnPqIdentityHex(QString& _viewPubHex, QString& _spendPubHex) const {
   CryptoNote::AccountKeys keys;
   if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys)) {
