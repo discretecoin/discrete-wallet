@@ -3,7 +3,6 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <cstring>
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -16,7 +15,6 @@
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteBasic.h"
 #include "Wallet/SentPaymentsStore.h"
-#include "TransactionsModel.h"
 
 #include "ui_transactiondetailsdialog.h"
 
@@ -36,8 +34,8 @@ TransactionDetailsDialog::TransactionDetailsDialog(const QModelIndex& _index, QW
     "<span style=\" font-weight:600;\">Transaction Hash: </span>%6\n</p></body></html>")) {
   m_ui->setupUi(this);
 
-  QModelIndex index = TransactionsModel::instance().index(_index.data(TransactionsModel::ROLE_ROW).toInt(),
-    _index.data(TransactionsModel::ROLE_ROW).toInt());
+  QModelIndex index = TransactionsModel::instance().index(
+    _index.data(TransactionsModel::ROLE_ROW).toInt(), TransactionsModel::COLUMN_STATE);
 
   quint64 numberOfConfirmations = index.data(TransactionsModel::ROLE_NUMBER_OF_CONFIRMATIONS).value<quint64>();
   QString amountText = index.sibling(index.row(), TransactionsModel::COLUMN_AMOUNT).data().toString() + " " +
@@ -47,16 +45,19 @@ TransactionDetailsDialog::TransactionDetailsDialog(const QModelIndex& _index, QW
 
   QString state;
   CryptoNote::WalletLegacyTransaction transaction;
-  CryptoNote::TransactionId transaction_id = index.row();
-  if(WalletAdapter::instance().getTransaction(transaction_id, transaction)) {
-     if(transaction.state == CryptoNote::WalletLegacyTransactionState::Failed)
-        state = tr("Failed");
-
-     else if(transaction.state == CryptoNote::WalletLegacyTransactionState::Cancelled)
-        state = tr("Cancelled");
+  CryptoNote::TransactionId transactionId =
+    index.data(TransactionsModel::ROLE_TRANSACTION_ID).value<CryptoNote::TransactionId>();
+  const bool hasTransaction = WalletAdapter::instance().getTransaction(transactionId, transaction);
+  if (hasTransaction) {
+    if (transaction.state == CryptoNote::WalletLegacyTransactionState::Failed) {
+      state = tr("Failed");
+    } else if (transaction.state == CryptoNote::WalletLegacyTransactionState::Cancelled) {
+      state = tr("Cancelled");
+    }
   }
-  if(state.isEmpty())
+  if (state.isEmpty()) {
     state = QString(tr("%n confirmation(s)", "", numberOfConfirmations));
+  }
 
   QString transactionHash = index.sibling(index.row(), TransactionsModel::COLUMN_HASH).data().toString();
 
@@ -69,12 +70,9 @@ TransactionDetailsDialog::TransactionDetailsDialog(const QModelIndex& _index, QW
   // Present only for outgoing transactions this wallet sent; the History "To" column
   // above shows an elided address, so here we surface the full address, the amount to
   // each recipient, and the copyable proof string (disctxp1…) verifiers consume.
-  QByteArray hashBytes = index.data(TransactionsModel::ROLE_HASH).toByteArray();
-  Crypto::Hash txid;
-  if (hashBytes.size() == static_cast<int>(sizeof(txid))) {
-    std::memcpy(&txid, hashBytes.constData(), sizeof(txid));
+  if (hasTransaction) {
     CryptoNote::SentPaymentRecord record;
-    if (WalletAdapter::instance().getPaymentProofs(txid, record) && !record.recipients.empty()) {
+    if (WalletAdapter::instance().getPaymentProofs(transaction.hash, record) && !record.recipients.empty()) {
       QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
       QString extra = QStringLiteral(
         "<p><span style=\" font-weight:600;\">Recipients &amp; payment proofs:</span></p>");
