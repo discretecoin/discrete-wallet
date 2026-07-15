@@ -29,7 +29,6 @@ private:
 
   Q_SLOT void copyUri();
   Q_SLOT void saveUri();
-  Q_SLOT void saveQRcodeToFile();
 
 };
 

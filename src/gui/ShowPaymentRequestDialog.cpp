@@ -4,11 +4,9 @@
 
 #include <QClipboard>
 #include <QFileDialog>
-#include <QBuffer>
 #include <QTextStream>
 #include "MainWindow.h"
 #include "ShowPaymentRequestDialog.h"
-#include "QRLabel.h"
 
 #include "ui_showpaymentrequest.h"
 
@@ -22,8 +20,7 @@ ShowPaymentRequestDialog::~ShowPaymentRequestDialog() {
 }
 
 void ShowPaymentRequestDialog::setData(const QString &paymentRequest) {
-  m_ui->m_paymentRequestUriText->setText(paymentRequest);
-  m_ui->m_requestQRlabel->showQRCode(paymentRequest);
+  m_ui->m_paymentRequestUriText->setPlainText(paymentRequest);
   payment_request_uri = paymentRequest;
 }
 
@@ -41,22 +38,6 @@ void ShowPaymentRequestDialog::saveUri() {
         f.close();
       }
    }
-}
-
-void ShowPaymentRequestDialog::saveQRcodeToFile() {
-  QString fileName = QFileDialog::getSaveFileName(&MainWindow::instance(), tr("New PNG file"), QDir::homePath(), "PNG (*.png)");
-  if (!fileName.isEmpty()) {
-    QPixmap qrcode = m_ui->m_requestQRlabel->grab();
-    QFile f(fileName);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-      QByteArray ba;
-      QBuffer buffer(&ba);
-      buffer.open(QIODevice::WriteOnly);
-      qrcode.save(&buffer, "PNG");
-      f.write(ba);
-      f.close();
-    }
-  }
 }
 
 }

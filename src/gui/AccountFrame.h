@@ -58,6 +58,7 @@ private:
   QList<QMenu*> m_copyContextMenus;
 
   void applyFramePalette();
+  void updateAddressDisplay();
   void updateWalletAddress(const QString& _address);
   void updateActualBalance(quint64 _balance);
   void updatePendingBalance(quint64 _balance);
@@ -80,6 +81,7 @@ private:
 
   Q_SLOT void copyAddress();
   Q_SLOT void copyAccountNumber();
+  Q_SLOT void showAccountNumberQr();
   Q_SLOT void registerAccountNumber();
 
 };

@@ -28,15 +28,9 @@ private:
 
   void updateWalletAddress(const QString& _address);
   void walletClosed();
-  // Resolves the wallet's registered account number, mirroring
-  // AccountFrame::fetchAccountNumber, so the payment request URI/QR can use
-  // the short account number instead of the ~5000-character PQ address.
-  void fetchAccountNumber(const QString& _address);
+  void copyAddress();
   QString wallet_address;
   QString requestUri;
-  QString m_accountNumber;
-  bool m_accountNumberResolved;
-  bool m_accountNumberFetchInProgress;
 
   Q_SLOT void createRequestPaymentClicked();
 

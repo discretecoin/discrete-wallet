@@ -33,6 +33,7 @@ QRCodeDialog::QRCodeDialog(const QString& _title, const QString& _text, QWidget*
   m_ui->setupUi(this);
   setWindowTitle(_title);
   m_ui->m_qrCodeLabel->showQRCode(_text);
+  m_ui->m_qrText->setText(_text);
 }
 
 QRCodeDialog::~QRCodeDialog() {

@@ -7,16 +7,18 @@
 #include <QAction>
 #include <QClipboard>
 #include <QEvent>
+#include <QFontMetrics>
+#include <QIcon>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
-#include <QTimer>
+#include <QPainter>
+#include <QPixmap>
 #include <QFontDatabase>
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPushButton>
-#include <QRegularExpression>
 #include <QToolButton>
 #include <QToolTip>
 #include <future>
@@ -26,6 +28,7 @@
 #include "CurrencyAdapter.h"
 #include "Settings.h"
 #include "AccountNumber.h"
+#include "QRCodeDialog.h"
 
 #include "ui_accountframe.h"
 
@@ -40,23 +43,29 @@ constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
 // "Not registered") are much longer than an account number, so they render at a
 // smaller size to fit the narrow sidebar instead of clipping at the hero size.
 constexpr int ACCOUNT_NUMBER_STATUS_FONT_SIZE = 14;
-// PQ addresses are ~3000-character bech32m strings — far too long to display
-// in full. Elide to a short prefix/suffix, like other crypto wallets; the full
-// address is always available via the copy button and context menu. The
-// sidebar is narrow, so keep the elision short.
-constexpr int ADDRESS_ELIDE_PREFIX = 13;
-constexpr int ADDRESS_ELIDE_SUFFIX = 6;
 
-QString formatDisplayAddress(const QString& address) {
-  if (address.isEmpty()) {
-    return QString();
+QIcon makeCopyIcon() {
+  QIcon icon;
+  for (const qreal devicePixelRatio : {1.0, 2.0}) {
+    const QSize logicalSize(16, 16);
+    QPixmap pixmap(logicalSize * devicePixelRatio);
+    pixmap.setDevicePixelRatio(devicePixelRatio);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(QColor(QStringLiteral("#F5F7F8")), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawRoundedRect(QRectF(5.0, 2.0, 8.0, 9.0), 1.0, 1.0);
+    painter.drawRoundedRect(QRectF(2.0, 5.0, 8.0, 9.0), 1.0, 1.0);
+    painter.end();
+
+    icon.addPixmap(pixmap, QIcon::Normal, QIcon::Off);
+    icon.addPixmap(pixmap, QIcon::Active, QIcon::Off);
+    icon.addPixmap(pixmap, QIcon::Selected, QIcon::Off);
   }
-  if (address.size() > ADDRESS_ELIDE_PREFIX + ADDRESS_ELIDE_SUFFIX + 1) {
-    return address.left(ADDRESS_ELIDE_PREFIX) + QStringLiteral("…") + address.right(ADDRESS_ELIDE_SUFFIX);
-  }
-  return address;
+  return icon;
 }
-
 // Primary balance (Available): a small muted caption above a large value.
 QString formatPrimaryBalance(const QString& title, const QString& amount, const QString& ticker) {
   // Explicit colors throughout so the amount doesn't depend on the inherited
@@ -124,6 +133,7 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 
   m_ui->m_accountNumberLabel->setVisible(false);
   m_ui->m_copyAccountNumberButton->setVisible(false);
+  m_ui->m_accountNumberQrButton->setVisible(false);
   m_ui->m_registerAccountButton->setVisible(false);
 
   QFont addressFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -163,14 +173,26 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
 
   m_ui->m_copyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyAccountNumberButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+  m_ui->m_accountNumberQrButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyButton->setIconSize(QSize(15, 15));
   m_ui->m_copyAccountNumberButton->setIconSize(QSize(15, 15));
+  m_ui->m_accountNumberQrButton->setIconSize(QSize(16, 16));
+  const QIcon copyIcon = makeCopyIcon();
+  m_ui->m_copyButton->setIcon(copyIcon);
+  m_ui->m_copyAccountNumberButton->setIcon(copyIcon);
+  const QPixmap qrPixmap(QStringLiteral(":/icons/qrcode"));
+  if (!qrPixmap.isNull()) {
+    m_ui->m_accountNumberQrButton->setIcon(QIcon(qrPixmap));
+  }
   m_ui->m_copyButton->setText(QString());
   m_ui->m_copyAccountNumberButton->setText(QString());
+  m_ui->m_accountNumberQrButton->setText(QString());
   m_ui->m_copyButton->setFocusPolicy(Qt::NoFocus);
   m_ui->m_copyAccountNumberButton->setFocusPolicy(Qt::NoFocus);
+  m_ui->m_accountNumberQrButton->setFocusPolicy(Qt::NoFocus);
   connect(m_ui->m_copyButton, &QToolButton::clicked, this, &AccountFrame::copyAddress);
   connect(m_ui->m_copyAccountNumberButton, &QToolButton::clicked, this, &AccountFrame::copyAccountNumber);
+  connect(m_ui->m_accountNumberQrButton, &QToolButton::clicked, this, &AccountFrame::showAccountNumberQr);
 }
 
 AccountFrame::~AccountFrame() {
@@ -208,6 +230,10 @@ void AccountFrame::applyFramePalette() {
 }
 
 bool AccountFrame::eventFilter(QObject* _object, QEvent* _event) {
+  if (_object == m_ui->m_addressLabel && _event->type() == QEvent::Resize) {
+    updateAddressDisplay();
+  }
+
   if (_object == m_ui->m_addressLabel &&
       (_event->type() == QEvent::KeyPress || _event->type() == QEvent::ShortcutOverride)) {
     auto* keyEvent = static_cast<QKeyEvent*>(_event);
@@ -227,7 +253,7 @@ bool AccountFrame::eventFilter(QObject* _object, QEvent* _event) {
 
 void AccountFrame::updateWalletAddress(const QString& _address) {
   m_address = _address;
-  m_ui->m_addressLabel->setText(formatDisplayAddress(_address));
+  updateAddressDisplay();
   // The full address is ~3000 characters (bech32m-encoded PQ keys) — showing
   // it as a tooltip is unreadable. Use the copy button/context menu for that;
   // the tooltip just explains what the elided text is.
@@ -241,6 +267,12 @@ void AccountFrame::updateWalletAddress(const QString& _address) {
   m_registrationTransactionHash.clear();
   updateAccountNumberDisplay();
   fetchAccountNumber(_address);
+}
+
+void AccountFrame::updateAddressDisplay() {
+  const int availableWidth = m_ui->m_addressLabel->contentsRect().width();
+  m_ui->m_addressLabel->setText(
+    QFontMetrics(m_ui->m_addressLabel->font()).elidedText(m_address, Qt::ElideMiddle, availableWidth));
 }
 
 void AccountFrame::copyAddress() {
@@ -340,6 +372,7 @@ void AccountFrame::updateAccountNumberDisplay() {
       m_ui->m_accountNumberLabel->setToolTip(tooltip);
       m_ui->m_accountNumberLabel->setVisible(true);
       m_ui->m_copyAccountNumberButton->setVisible(false);
+      m_ui->m_accountNumberQrButton->setVisible(false);
       m_ui->m_registerAccountButton->setVisible(false);
       return;
     }
@@ -350,6 +383,7 @@ void AccountFrame::updateAccountNumberDisplay() {
       m_ui->m_accountNumberLabel->setToolTip(tr("This wallet does not have a registered account number."));
     }
     m_ui->m_copyAccountNumberButton->setVisible(false);
+    m_ui->m_accountNumberQrButton->setVisible(false);
     m_ui->m_registerAccountButton->setVisible(canRegister);
   } else {
     m_ui->m_accountNumberLabel->setFont(m_accountNumberFont);
@@ -357,12 +391,22 @@ void AccountFrame::updateAccountNumberDisplay() {
     m_ui->m_accountNumberLabel->setToolTip(m_accountNumber);
     m_ui->m_accountNumberLabel->setVisible(true);
     m_ui->m_copyAccountNumberButton->setVisible(true);
+    m_ui->m_accountNumberQrButton->setVisible(true);
     m_ui->m_registerAccountButton->setVisible(false);
   }
 }
 
 void AccountFrame::copyAccountNumber() {
   copyTextToClipboard(m_accountNumber, m_ui->m_copyAccountNumberButton);
+}
+
+void AccountFrame::showAccountNumberQr() {
+  if (m_accountNumber.isEmpty()) {
+    return;
+  }
+
+  QRCodeDialog dialog(tr("Account Number"), m_accountNumber, this);
+  dialog.exec();
 }
 
 void AccountFrame::copyTextToClipboard(const QString& _text, QWidget* _anchor) {
@@ -526,6 +570,7 @@ void AccountFrame::reset() {
   m_ui->m_accountNumberLabel->clear();
   m_ui->m_accountNumberLabel->setVisible(false);
   m_ui->m_copyAccountNumberButton->setVisible(false);
+  m_ui->m_accountNumberQrButton->setVisible(false);
   m_ui->m_registerAccountButton->setVisible(false);
 }
 
