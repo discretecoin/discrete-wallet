@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>226</width>
-    <height>230</height>
+    <width>261</width>
+    <height>296</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -187,13 +187,6 @@
         </property>
         <property name="text">
          <string>Register Account Number</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="m_accountDivider">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
         </property>
        </widget>
       </item>
