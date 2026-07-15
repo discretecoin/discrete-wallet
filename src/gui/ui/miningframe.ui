@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>494</height>
+    <height>587</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -499,7 +499,7 @@
                 <string notr="true">Mined all time: —</string>
                </property>
                <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set>
+                <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
                </property>
               </widget>
              </item>
@@ -507,11 +507,11 @@
            </item>
            <item>
             <widget class="QLabel" name="m_recentBlocksLabel">
+             <property name="styleSheet">
+              <string notr="true"/>
+             </property>
              <property name="text">
               <string notr="true">Recent finds — 0 in 24h, 0 in 7d</string>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">QLabel#m_recentBlocksLabel { color: palette(mid); }</string>
              </property>
             </widget>
            </item>

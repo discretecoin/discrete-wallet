@@ -57,7 +57,6 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   m_ui->m_remote_label->hide();
   //m_ui->m_sendButton->setEnabled(false);
   m_ui->m_feeSpin->setMinimum(getMinimalFee());
-  updateFeeEstimate();
 
   QString connection = Settings::instance().getConnection();
   if(connection.compare("remote") == 0) {
@@ -142,21 +141,6 @@ void SendFrame::amountValueChanged() {
   Q_FOREACH (TransferFrame * transfer, m_transfers) {
     quint64 amount = CurrencyAdapter::instance().parseAmount(transfer->getAmountString());
     m_totalAmount += amount;
-  }
-  updateFeeEstimate();
-}
-
-// Discrete's fee is a fixed, size-based floor with no fee market, so there is
-// nothing for the user to choose: show a plain "automatic" note by default and
-// only display a concrete amount when the user sets a manual override. The
-// exact fee is computed by the wallet at send time (see sendClicked).
-void SendFrame::updateFeeEstimate() {
-  if (m_ui->m_manualFeeCheckBox->isChecked()) {
-    const quint64 feeAtomic = CurrencyAdapter::instance().parseAmount(m_ui->m_feeSpin->cleanText());
-    const QString ticker = CurrencyAdapter::instance().getCurrencyTicker().toUpper();
-    m_ui->m_feeEstimateLabel->setText(CurrencyAdapter::instance().formatAmount(feeAtomic) + " " + ticker);
-  } else {
-    m_ui->m_feeEstimateLabel->setText(tr("Automatic (based on size)"));
   }
 }
 
@@ -327,16 +311,6 @@ void SendFrame::sendClicked() {
       }
     }
   }
-}
-
-void SendFrame::feeValueChanged(double _value) {
-  Q_UNUSED(_value);
-  updateFeeEstimate();
-}
-
-void SendFrame::feeOverrideToggled(bool _override) {
-  Q_UNUSED(_override);
-  updateFeeEstimate();
 }
 
 void SendFrame::dontRelayToggled(bool _dontRelay) {

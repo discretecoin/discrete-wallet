@@ -14,16 +14,16 @@
    <string>Frame</string>
   </property>
   <property name="frameShape">
-   <enum>QFrame::StyledPanel</enum>
+   <enum>QFrame::Shape::StyledPanel</enum>
   </property>
   <property name="frameShadow">
-   <enum>QFrame::Raised</enum>
+   <enum>QFrame::Shadow::Raised</enum>
   </property>
   <layout class="QVBoxLayout" name="m_send_frame_main_layout">
    <item>
     <widget class="QScrollArea" name="m_transfersScrollarea">
      <property name="frameShape">
-      <enum>QFrame::NoFrame</enum>
+      <enum>QFrame::Shape::NoFrame</enum>
      </property>
      <property name="widgetResizable">
       <bool>true</bool>
@@ -33,8 +33,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>846</width>
-        <height>373</height>
+        <width>842</width>
+        <height>461</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="m_send_frame_layout">
@@ -53,7 +53,7 @@
        <item>
         <spacer name="verticalSpacer">
          <property name="orientation">
-          <enum>Qt::Vertical</enum>
+          <enum>Qt::Orientation::Vertical</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
@@ -68,52 +68,6 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="feeRowLayout">
-     <item>
-      <widget class="QLabel" name="label_3">
-       <property name="minimumSize">
-        <size>
-         <width>75</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>100</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>Fee:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="m_feeEstimateLabel">
-       <property name="toolTip">
-        <string>Discrete's network fee is a fixed, size-based amount set automatically when the transaction is created (~0.01 XDS per 4 KB). The exact fee is recorded in your transaction history.</string>
-       </property>
-       <property name="text">
-        <string>Automatic (based on size)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="feeRowSpacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>100</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
     <widget class="QFrame" name="m_advancedWidget">
      <layout class="QGridLayout" name="advancedGridLayout">
       <property name="leftMargin">
@@ -125,28 +79,15 @@
       <property name="rightMargin">
        <number>0</number>
       </property>
-      <item row="0" column="0">
-       <widget class="QCheckBox" name="m_manualFeeCheckBox">
+      <item row="0" column="3">
+       <widget class="QCheckBox" name="dontRelayCheckBox">
+        <property name="toolTip">
+         <string>Build and sign the transaction, then show its raw hex without sending it to the network.</string>
+        </property>
         <property name="text">
-         <string>Manual fee override:</string>
+         <string>Prepare transaction but do not relay</string>
         </property>
        </widget>
-      </item>
-      <item row="0" column="2">
-       <spacer name="advancedSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::Expanding</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>100</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
       </item>
       <item row="0" column="1">
        <widget class="QDoubleSpinBox" name="m_feeSpin">
@@ -191,15 +132,28 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="3">
-       <widget class="QCheckBox" name="dontRelayCheckBox">
-        <property name="toolTip">
-         <string>Build and sign the transaction, then show its raw hex without sending it to the network.</string>
-        </property>
+      <item row="0" column="0">
+       <widget class="QCheckBox" name="m_manualFeeCheckBox">
         <property name="text">
-         <string>Prepare transaction but do not relay</string>
+         <string>Manual fee override:</string>
         </property>
        </widget>
+      </item>
+      <item row="0" column="2">
+       <spacer name="advancedSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Expanding</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>100</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>
@@ -282,7 +236,6 @@
       <widget class="QLabel" name="m_remote_label">
        <property name="font">
         <font>
-         <weight>50</weight>
          <bold>false</bold>
         </font>
        </property>
@@ -297,7 +250,7 @@
      <item>
       <spacer name="horizontalSpacer_2">
        <property name="orientation">
-        <enum>Qt::Horizontal</enum>
+        <enum>Qt::Orientation::Horizontal</enum>
        </property>
        <property name="sizeHint" stdset="0">
         <size>
@@ -407,22 +360,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_feeSpin</sender>
-   <signal>valueChanged(double)</signal>
-   <receiver>SendFrame</receiver>
-   <slot>feeValueChanged(double)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>188</x>
-     <y>522</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>432</x>
-     <y>294</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>m_manualFeeCheckBox</sender>
    <signal>toggled(bool)</signal>
    <receiver>m_feeSpin</receiver>
@@ -435,22 +372,6 @@
     <hint type="destinationlabel">
      <x>780</x>
      <y>485</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>m_manualFeeCheckBox</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>SendFrame</receiver>
-   <slot>feeOverrideToggled(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>602</x>
-     <y>447</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>432</x>
-     <y>294</y>
     </hint>
    </hints>
   </connection>
@@ -475,9 +396,7 @@
   <slot>sendClicked()</slot>
   <slot>clearAllClicked()</slot>
   <slot>addRecipientClicked()</slot>
-  <slot>feeValueChanged(double)</slot>
   <slot>advancedClicked(bool)</slot>
-  <slot>feeOverrideToggled(bool)</slot>
   <slot>dontRelayToggled(bool)</slot>
   <slot>setEnabled(bool)</slot>
  </slots>
