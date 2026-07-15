@@ -8,13 +8,10 @@
 #include <QClipboard>
 #include <QEvent>
 #include <QFontMetrics>
-#include <QIcon>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
-#include <QPainter>
-#include <QPixmap>
 #include <QFontDatabase>
 #include <QMessageBox>
 #include <QProgressDialog>
@@ -44,28 +41,6 @@ constexpr int ACCOUNT_NUMBER_VALUE_FONT_SIZE = 23;
 // smaller size to fit the narrow sidebar instead of clipping at the hero size.
 constexpr int ACCOUNT_NUMBER_STATUS_FONT_SIZE = 14;
 
-QIcon makeCopyIcon() {
-  QIcon icon;
-  for (const qreal devicePixelRatio : {1.0, 2.0}) {
-    const QSize logicalSize(16, 16);
-    QPixmap pixmap(logicalSize * devicePixelRatio);
-    pixmap.setDevicePixelRatio(devicePixelRatio);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QColor(QStringLiteral("#F5F7F8")), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawRoundedRect(QRectF(5.0, 2.0, 8.0, 9.0), 1.0, 1.0);
-    painter.drawRoundedRect(QRectF(2.0, 5.0, 8.0, 9.0), 1.0, 1.0);
-    painter.end();
-
-    icon.addPixmap(pixmap, QIcon::Normal, QIcon::Off);
-    icon.addPixmap(pixmap, QIcon::Active, QIcon::Off);
-    icon.addPixmap(pixmap, QIcon::Selected, QIcon::Off);
-  }
-  return icon;
-}
 // Primary balance (Available): a small muted caption above a large value.
 QString formatPrimaryBalance(const QString& title, const QString& amount, const QString& ticker) {
   // Explicit colors throughout so the amount doesn't depend on the inherited
@@ -174,16 +149,9 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
   m_ui->m_copyButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_copyAccountNumberButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
   m_ui->m_accountNumberQrButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  m_ui->m_copyButton->setIconSize(QSize(15, 15));
-  m_ui->m_copyAccountNumberButton->setIconSize(QSize(15, 15));
+  m_ui->m_copyButton->setIconSize(QSize(16, 16));
+  m_ui->m_copyAccountNumberButton->setIconSize(QSize(16, 16));
   m_ui->m_accountNumberQrButton->setIconSize(QSize(16, 16));
-  const QIcon copyIcon = makeCopyIcon();
-  m_ui->m_copyButton->setIcon(copyIcon);
-  m_ui->m_copyAccountNumberButton->setIcon(copyIcon);
-  const QPixmap qrPixmap(QStringLiteral(":/icons/qrcode"));
-  if (!qrPixmap.isNull()) {
-    m_ui->m_accountNumberQrButton->setIcon(QIcon(qrPixmap));
-  }
   m_ui->m_copyButton->setText(QString());
   m_ui->m_copyAccountNumberButton->setText(QString());
   m_ui->m_accountNumberQrButton->setText(QString());

@@ -394,6 +394,7 @@ void MainWindow::buildSidebar() {
     // are unaffected.
     action->setIconText(QStringLiteral("   ") + action->text());
     QToolButton* button = new QToolButton(m_sidebar);
+    button->setProperty("sidebarNavigation", true);
     button->setDefaultAction(action);
     button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -417,10 +418,10 @@ void MainWindow::buildSidebar() {
 
   m_sidebar->setStyleSheet(
     "#m_sidebar { background-color:#10171B; border-right:1px solid #1c262c; }"
-    "#m_sidebar QToolButton { color:#c3cbd1; border:none; border-radius:8px;"
+    "#m_sidebar QToolButton[sidebarNavigation=\"true\"] { color:#c3cbd1; border:none; border-radius:8px;"
     "  padding:9px 12px; text-align:left; background:transparent; font-size:14px; }"
-    "#m_sidebar QToolButton:hover { background:#17212a; }"
-    "#m_sidebar QToolButton:checked { color:#5FE29F; background:#17251f; }");
+    "#m_sidebar QToolButton[sidebarNavigation=\"true\"]:hover { background:#17212a; }"
+    "#m_sidebar QToolButton[sidebarNavigation=\"true\"]:checked { color:#5FE29F; background:#17251f; }");
 }
 
 bool MainWindow::event(QEvent* _event) {
