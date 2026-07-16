@@ -142,16 +142,22 @@ void AddressBookFrame::copyAccountNumberClicked() {
   const std::string viewPubHex = Common::toHex(addr.viewPub.data(), addr.viewPub.size());
   const std::string spendPubHex = Common::toHex(addr.spendPub.data(), addr.spendPub.size());
 
+  // Account-number fingerprint (field A) — derived from this identity's keys.
+  const uint32_t fingerprint = CryptoNote::pqAccountFingerprint(
+      CurrencyAdapter::instance().isTestnet(),
+      addr.spendPub.data(), addr.spendPub.size(),
+      addr.viewPub.data(), addr.viewPub.size());
+
   auto registered = std::make_shared<bool>(false);
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);
 
   NodeAdapter::instance().getPqAccount(viewPubHex, spendPubHex, *registered, *blockHeight, *txIndex,
-    [this, registered, blockHeight, txIndex](std::error_code ec) {
-      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex]() {
+    [this, registered, blockHeight, txIndex, fingerprint](std::error_code ec) {
+      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, fingerprint]() {
         if (!ec && *registered) {
           CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
-          QApplication::clipboard()->setText(QString::fromStdString(acct.toString()));
+          QApplication::clipboard()->setText(QString::fromStdString(acct.toString(fingerprint)));
         } else {
           QMessageBox::information(this, tr("Account Number"), tr("No account number registered for this address."));
         }

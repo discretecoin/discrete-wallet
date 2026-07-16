@@ -79,7 +79,7 @@ public:
     Paid
   };
 
-  // Registers this wallet's PQ identity on chain as a short H-I-C account
+  // Registers this wallet's PQ identity on chain as a short H-I-A-C account
   // number. Free mode submits a zero-fee TX_FREE_REG with anti-spam PoW; paid
   // mode submits a normal fee-paying TX_PQ carrying the registration tag.
   void registerAccountNumber(AccountRegistrationMode _mode);
@@ -100,7 +100,7 @@ public:
 
   QString signMessage(const QString &data);
   // _destination accepts either a raw bech32m PQ address or an account number
-  // (H-I-C / H-I-T-C); it is resolved to a spend public key the same way the
+  // (H-I-A-C / H-I-A-T-C); it is resolved to a spend public key the same way the
   // send path resolves a destination (see PqRecipient.h).
   bool verifyMessage(const QString &data, const QString &_destination, const QString &signature);
 

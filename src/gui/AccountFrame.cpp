@@ -25,6 +25,7 @@
 #include "CurrencyAdapter.h"
 #include "Settings.h"
 #include "AccountNumber.h"
+#include "PqAddress.h"  // pqAccountFingerprint, decodePqAddress
 #include "QRCodeDialog.h"
 
 #include "ui_accountframe.h"
@@ -275,13 +276,27 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
   m_accountNumberFetchInProgress = true;
   const QString requestedAddress = _address;
 
+  // Account-number fingerprint (field A) — derived from this wallet's identity keys,
+  // which the bech32m address embeds. Computed here so the async result can render it.
+  uint32_t fingerprint = 0;
+  {
+    CryptoNote::PqAddress ownAddr;
+    if (CryptoNote::decodePqAddress(requestedAddress.toStdString(),
+                                    CurrencyAdapter::instance().isTestnet(), ownAddr)) {
+      fingerprint = CryptoNote::pqAccountFingerprint(
+          CurrencyAdapter::instance().isTestnet(),
+          ownAddr.spendPub.data(), ownAddr.spendPub.size(),
+          ownAddr.viewPub.data(), ownAddr.viewPub.size());
+    }
+  }
+
   auto registered = std::make_shared<bool>(false);
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);
 
   NodeAdapter::instance().getPqAccount(viewPubHex.toStdString(), spendPubHex.toStdString(), *registered, *blockHeight, *txIndex,
-    [this, registered, blockHeight, txIndex, requestedAddress](std::error_code ec) {
-      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, requestedAddress]() {
+    [this, registered, blockHeight, txIndex, requestedAddress, fingerprint](std::error_code ec) {
+      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, requestedAddress, fingerprint]() {
         if (WalletAdapter::instance().getAddress() != requestedAddress) {
           m_accountNumberFetchInProgress = false;
           return;
@@ -310,7 +325,7 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
         }
 
         m_accountNumberResolved = true;
-        m_accountNumber = QString::fromStdString(CryptoNote::AccountNumber{*blockHeight, *txIndex}.toString());
+        m_accountNumber = QString::fromStdString(CryptoNote::AccountNumber{*blockHeight, *txIndex}.toString(fingerprint));
         // Registration confirmed — drop the suppression flag so future
         // address-clearing scenarios behave normally.
         m_registrationPending = false;

@@ -33,8 +33,8 @@ public:
   quint64 getNetworkPrefix() const;
 
   // True if `_address` is a well-formed destination: either a raw bech32m PQ
-  // address for THIS network, or a syntactically valid account number (H-I-C or
-  // the H-I-T-C deposit-subaddress form). This is a cheap, local syntax check
+  // address for THIS network, or a syntactically valid account number (H-I-A-C or
+  // the H-I-A-T-C deposit-subaddress form). This is a cheap, local syntax check
   // only — it does not confirm an account number is actually registered on
   // chain. That confirmation happens at send time (see PqRecipient.h).
   bool validateAddress(const QString& _address) const;

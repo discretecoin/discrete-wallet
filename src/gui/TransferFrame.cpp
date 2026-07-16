@@ -116,7 +116,7 @@ void TransferFrame::amountValueChange() {
 }
 
 bool TransferFrame::looksLikeAccountNumber(const QString& _text) {
-  // H-I-C (base account) or H-I-T-C (deposit subaddress).
+  // H-I-A-C (base account) or H-I-A-T-C (deposit subaddress).
   static QRegularExpression re("^\\d+-\\d+(-\\d+)?-[0-9A-Za-z]$");
   return re.match(_text).hasMatch();
 }
@@ -137,7 +137,7 @@ void TransferFrame::resolveAccountNumber(const QString& _input) {
   // input is unreadable, and unnecessary: the send path resolves the account
   // number again to the real keys (see WalletLegacy::sendTransaction /
   // PqRecipient), and validateAddress() accepts account numbers directly. So
-  // the H-I-C / H-I-T-C string stays in the field and is sent as-is.
+  // the H-I-A-C / H-I-A-T-C string stays in the field and is sent as-is.
   auto found = std::make_shared<bool>(false);
   auto viewPubHex = std::make_shared<std::string>();
   auto spendPubHex = std::make_shared<std::string>();

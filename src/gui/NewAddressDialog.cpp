@@ -47,7 +47,7 @@ void NewAddressDialog::setEditAddress(QString address) {
 }
 
 bool NewAddressDialog::looksLikeAccountNumber(const QString& _text) {
-  // H-I-C (base account) or H-I-T-C (deposit subaddress).
+  // H-I-A-C (base account) or H-I-A-T-C (deposit subaddress).
   static QRegularExpression re("^\\d+-\\d+(-\\d+)?-[0-9A-Za-z]$");
   return re.match(_text).hasMatch();
 }
