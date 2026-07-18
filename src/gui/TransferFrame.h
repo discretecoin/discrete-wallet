@@ -12,8 +12,6 @@ class TransferFrame;
 
 namespace WalletGui {
 
-class DnsManager;
-
 class TransferFrame : public QFrame {
   Q_OBJECT
   Q_DISABLE_COPY(TransferFrame)
@@ -40,10 +38,7 @@ signals:
 
 private:
   QScopedPointer<Ui::TransferFrame> m_ui;
-  DnsManager* m_aliasProvider;
-  int m_addressInputTimer;
   int m_accountNumberInputTimer;
-  void onAliasFound(const QString& _name, const QString& _address);
   // Resolves an H-I-A-C or H-I-A-T-C account number to its registered PQ address
   // for display, mirroring the canonical resolution in Wallet/PqRecipient.h.
   void resolveAccountNumber(const QString& _input);

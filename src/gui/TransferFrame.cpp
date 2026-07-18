@@ -13,7 +13,6 @@
 #include "MainWindow.h"
 #include "CurrencyAdapter.h"
 #include "NodeAdapter.h"
-#include "DnsLookup.h"
 #include "AccountNumber.h"
 #include "PqAddress.h"
 #include "Common/StringTools.h"
@@ -24,11 +23,10 @@ namespace WalletGui {
 
 Q_DECL_CONSTEXPR quint32 ADDRESS_INPUT_INTERVAL = 1500;
 
-TransferFrame::TransferFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::TransferFrame), m_aliasProvider(new DnsManager(this)), m_addressInputTimer(-1), m_accountNumberInputTimer(-1) {
+TransferFrame::TransferFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::TransferFrame), m_accountNumberInputTimer(-1) {
   m_ui->setupUi(this);
   setAttribute(Qt::WA_DeleteOnClose);
   m_ui->m_amountSpin->setSuffix(" " + CurrencyAdapter::instance().getCurrencyTicker().toUpper());
-  connect(m_aliasProvider, &DnsManager::aliasFoundSignal, this, &TransferFrame::onAliasFound);
 }
 
 TransferFrame::~TransferFrame() {
@@ -68,13 +66,6 @@ void TransferFrame::addressBookClicked() {
 }
 
 void TransferFrame::timerEvent(QTimerEvent* _event) {
-  if (_event->timerId() == m_addressInputTimer) {
-    m_aliasProvider->getAddresses(m_ui->m_addressEdit->text().trimmed());
-    killTimer(m_addressInputTimer);
-    m_addressInputTimer = -1;
-    return;
-  }
-
   if (_event->timerId() == m_accountNumberInputTimer) {
     resolveAccountNumber(m_ui->m_addressEdit->text().trimmed());
     killTimer(m_accountNumberInputTimer);
@@ -85,19 +76,9 @@ void TransferFrame::timerEvent(QTimerEvent* _event) {
   QFrame::timerEvent(_event);
 }
 
-void TransferFrame::onAliasFound(const QString& _name, const QString& _address) {
-  m_ui->m_addressEdit->setText(QString("%1 <%2>").arg(_name).arg(_address));
-  m_ui->m_addressStatusLabel->hide();
-}
-
 void TransferFrame::addressEdited(const QString& _text) {
   m_ui->m_addressStatusLabel->hide();
-  if(!_text.isEmpty() && _text.contains('.')) {
-    if (m_addressInputTimer != -1) {
-      killTimer(m_addressInputTimer);
-    }
-    m_addressInputTimer = startTimer(ADDRESS_INPUT_INTERVAL);
-  } else if (looksLikeAccountNumber(_text.trimmed())) {
+  if (looksLikeAccountNumber(_text.trimmed())) {
     if (m_accountNumberInputTimer != -1) {
       killTimer(m_accountNumberInputTimer);
     }
