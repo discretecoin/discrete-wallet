@@ -337,9 +337,9 @@ set(CRYPTONOTE_SOURCES
   ${Discrete_BlockchainExplorer}
 )
 
-file(GLOB_RECURSE SOURCES src/*.cpp)
-file(GLOB_RECURSE HEADERS src/*.h)
-file(GLOB_RECURSE FORMS src/gui/ui/*.ui)
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS src/*.h)
+file(GLOB_RECURSE FORMS CONFIGURE_DEPENDS src/gui/ui/*.ui)
 file(GLOB_RECURSE Mnemonics cryptonote/src/Mnemonics/*)
 file(GLOB_RECURSE QCustomPlot external/qcustomplot/*)
 file(GLOB TRANSLATION_FILES src/languages/*.ts)

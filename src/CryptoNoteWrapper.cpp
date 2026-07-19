@@ -288,7 +288,7 @@ public:
         m_logger(Logging::INFO) << "Running in Testnet mode";
       } else {
         CryptoNote::Checkpoints checkpoints(logManager);
-        checkpoints.load_checkpoints_from_dns();
+        checkpoints.load_checkpoints_from_dns(m_currency.genesisBlockHash());
         for (const CryptoNote::CheckpointData& checkpoint : CryptoNote::CHECKPOINTS) {
           checkpoints.add_checkpoint(checkpoint.height, checkpoint.blockId);
         }
