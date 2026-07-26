@@ -13,8 +13,8 @@
 
 // Update checks are disabled at the call site in main.cpp until this repo
 // actually publishes tagged releases there.
-const static QString DISCRETE_UPDATE_URL   = "https://api.github.com/repos/aivve/DiscreteWallet/tags";
-const static QString DISCRETE_DOWNLOAD_URL = "https://github.com/aivve/DiscreteWallet/releases/";
+const static QString DISCRETE_UPDATE_URL   = "https://api.github.com/repos/discretecoin/discrete-wallet/tags";
+const static QString DISCRETE_DOWNLOAD_URL = "https://github.com/discretecoin/discrete-wallet/releases/";
 
 class Updater : public QObject
 {
