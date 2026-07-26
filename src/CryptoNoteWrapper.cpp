@@ -9,6 +9,7 @@
 #include "CryptoNoteWrapper.h"
 #include "Checkpoints/Checkpoints.h"
 #include "Checkpoints/CheckpointsData.h"
+#include "CheckpointsDns/CheckpointsDnsFetch.h"
 #include "Common/StringTools.h"
 #include "CryptoNoteCore/CryptoNoteBasicImpl.h"
 #include "CryptoNoteCore/CryptoNoteFormatUtils.h"
@@ -288,10 +289,19 @@ public:
         m_logger(Logging::INFO) << "Running in Testnet mode";
       } else {
         CryptoNote::Checkpoints checkpoints(logManager);
-        checkpoints.load_checkpoints_from_dns(m_currency.genesisBlockHash());
+        // Hardcoded checkpoints first, then DNS — same order the daemon uses.
+        // fetchDnsCheckpoints compares each verified DNS checkpoint against what
+        // is already loaded so it can report a conflict; seeding the built-in set
+        // beforehand is what gives that check anything to compare against (and
+        // avoids add_checkpoint rejecting a duplicate height afterwards).
         for (const CryptoNote::CheckpointData& checkpoint : CryptoNote::CHECKPOINTS) {
           checkpoints.add_checkpoint(checkpoint.height, checkpoint.blockId);
         }
+        // Bounded internally by a wall-clock deadline, so an unreachable or
+        // silent DNS/web server delays GUI startup by seconds, not forever.
+        CryptoNote::fetchDnsCheckpoints(checkpoints, logManager,
+                                        m_currency.genesisBlockHash(),
+                                        /*testnet=*/false);
         m_core.set_checkpoints(std::move(checkpoints));
       }
 

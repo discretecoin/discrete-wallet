@@ -303,6 +303,12 @@ file(GLOB_RECURSE Discrete_CryptoPq cryptonote/src/crypto_pq/*)
 file(GLOB_RECURSE Discrete_CryptoNoteCore cryptonote/src/CryptoNoteCore/* cryptonote/src/CryptoNoteConfig.h)
 file(GLOB_RECURSE Discrete_CryptoNoteProtocol cryptonote/src/CryptoNoteProtocol/*)
 file(GLOB_RECURSE Discrete_Checkpoints cryptonote/src/Checkpoints/*)
+# Signed DNS checkpoint discovery (small TXT pointer -> HTTPS-hosted signed
+# JSON). Upstream keeps this out of Checkpoints so that CryptoNoteCore's many
+# consumers don't inherit the TLS stack; here everything lands in one static
+# lib anyway, but the glob must still be listed or fetchDnsCheckpoints and the
+# pointer/verifier helpers go unresolved at link time.
+file(GLOB_RECURSE Discrete_CheckpointsDns cryptonote/src/CheckpointsDns/*)
 file(GLOB_RECURSE Discrete_Http cryptonote/src/HTTP/*)
 file(GLOB_RECURSE Discrete_InProcessNode cryptonote/src/InProcessNode/*)
 file(GLOB_RECURSE Discrete_Logging cryptonote/src/Logging/*)
@@ -323,6 +329,7 @@ set(CRYPTONOTE_SOURCES
   ${Discrete_CryptoNoteCore}
   ${Discrete_CryptoNoteProtocol}
   ${Discrete_Checkpoints}
+  ${Discrete_CheckpointsDns}
   ${Discrete_Http}
   ${Discrete_InProcessNode}
   ${Discrete_Logging}
