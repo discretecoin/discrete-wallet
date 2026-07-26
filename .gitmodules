@@ -1,4 +1,4 @@
 [submodule "cryptonote"]
 	path = cryptonote
-	url = https://github.com/aivve/discrete.git
+	url = https://github.com/discretecoin/discrete.git
 	branch = master
