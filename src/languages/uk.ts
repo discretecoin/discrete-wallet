@@ -6,7 +6,7 @@
     <message>
         <location filename="../gui/ui/aboutdialog.ui" line="32"/>
         <source>About %1</source>
-        <translation>Про Карбованець (%1)</translation>
+        <translation>Про Discrete (%1)</translation>
     </message>
     <message>
         <location filename="../gui/ui/aboutdialog.ui" line="191"/>
@@ -15,8 +15,8 @@
     </message>
     <message>
         <location filename="../gui/ui/aboutdialog.ui" line="155"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Karbo v. %1, core v. %2&lt;/p&gt;&lt;p&gt;This is the next generation anonymous cryptocurrency based on CryptoNote.&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2015. CryptoNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2016. Bytecoin Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2015-2016. DigitalNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2016-2026. Karbo (Karbowanec) Developers&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://opensource.org/licenses/MIT&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://opensource.org/licenses/MIT&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;https://cryptonote.org/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;https://cryptonote.org/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://karbo.io/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://karbo.io/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;THE SOFTWARE IS PROVIDED &amp;quot;AS IS&amp;quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Карбованець в. %1, ядро в. %2&lt;/p&gt;&lt;p&gt;Це криптовалюта нового покоління на основі CryptoNote.&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2015. CryptoNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2016. Bytecoin Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2015-2016. DigitalNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2016-2026. Karbo (Karbowanec) Developers&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://opensource.org/licenses/MIT&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://opensource.org/licenses/MIT&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;https://cryptonote.org/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;https://cryptonote.org/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://karbo.io/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://karbo.io/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;ЦЕ ПРОГРАМНЕ ЗАБЕЗПЕЧЕННЯ НАДАЄТЬСЯ &amp;quot;ЯК Є&amp;quot;, БЕЗ ГАРАНТІЙ БУДЬ-ЯКОГО ВИДУ, ПРЯМИХ АБО НЕПРЯМИХ, ВКЛЮЧАЮЧИ, АЛЕ НЕ ОБМЕЖУЮЧИСЬ, ГАРАНТІЯМИ КОМЕРЦІЙНОЇ ВИГОДИ, ВІДПОВІДНОСТІ ЙОГО КОНКРЕТНОМУ ПРИЗНАЧЕННЮ Й ВІДСУТНОСТІ ПОРУШЕННЯ ПРАВ. У ЖОДНОМУ РАЗІ АВТОРИ АБО ВЛАСНИКИ АВТОРСЬКИХ ПРАВ НЕ ВІДПОВІДАЮТЬ ЗА БУДЬ-ЯКИМИ СУДОВИМИ ПОЗОВАМИ, ЩОДО ЗБИТКІВ АБО ІНШИХ ПРЕТЕНЗІЙ, ЧИ ДІЙ ДОГОВОРУ, ЦИВІЛЬНОГО ПРАВОПОРУШЕННЯ АБО ІНШИХ, ЩО ВИНИКАЮТЬ ПОЗА, АБО У ЗВ&apos;ЯЗКУ З ПРОГРАМНИМ ЗАБЕЗПЕЧЕННЯМ АБО ВИКОРИСТАННЯМ ЧИ ІНШИМИ ДІЯМИ ПРОГРАМНОГО ЗАБЕЗПЕЧЕННЯ.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Discrete v. %1, core v. %2&lt;/p&gt;&lt;p&gt;This is the next generation anonymous cryptocurrency based on CryptoNote.&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2015. CryptoNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2016. Bytecoin Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2015-2016. DigitalNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2016-2026. Karbo (Karbowanec) Developers&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://opensource.org/licenses/MIT&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://opensource.org/licenses/MIT&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;https://cryptonote.org/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;https://cryptonote.org/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://karbo.io/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://karbo.io/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;THE SOFTWARE IS PROVIDED &amp;quot;AS IS&amp;quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Discrete в. %1, ядро в. %2&lt;/p&gt;&lt;p&gt;Це криптовалюта нового покоління на основі CryptoNote.&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2015. CryptoNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2012-2016. Bytecoin Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2015-2016. DigitalNote Developers&lt;/p&gt;&lt;p&gt;Copyright (c) 2016-2026. Karbo (Karbowanec) Developers&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://opensource.org/licenses/MIT&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://opensource.org/licenses/MIT&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;https://cryptonote.org/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;https://cryptonote.org/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;&lt;a href=&quot;http://karbo.io/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://karbo.io/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;p&gt;ЦЕ ПРОГРАМНЕ ЗАБЕЗПЕЧЕННЯ НАДАЄТЬСЯ &amp;quot;ЯК Є&amp;quot;, БЕЗ ГАРАНТІЙ БУДЬ-ЯКОГО ВИДУ, ПРЯМИХ АБО НЕПРЯМИХ, ВКЛЮЧАЮЧИ, АЛЕ НЕ ОБМЕЖУЮЧИСЬ, ГАРАНТІЯМИ КОМЕРЦІЙНОЇ ВИГОДИ, ВІДПОВІДНОСТІ ЙОГО КОНКРЕТНОМУ ПРИЗНАЧЕННЮ Й ВІДСУТНОСТІ ПОРУШЕННЯ ПРАВ. У ЖОДНОМУ РАЗІ АВТОРИ АБО ВЛАСНИКИ АВТОРСЬКИХ ПРАВ НЕ ВІДПОВІДАЮТЬ ЗА БУДЬ-ЯКИМИ СУДОВИМИ ПОЗОВАМИ, ЩОДО ЗБИТКІВ АБО ІНШИХ ПРЕТЕНЗІЙ, ЧИ ДІЙ ДОГОВОРУ, ЦИВІЛЬНОГО ПРАВОПОРУШЕННЯ АБО ІНШИХ, ЩО ВИНИКАЮТЬ ПОЗА, АБО У ЗВ&apos;ЯЗКУ З ПРОГРАМНИМ ЗАБЕЗПЕЧЕННЯМ АБО ВИКОРИСТАННЯМ ЧИ ІНШИМИ ДІЯМИ ПРОГРАМНОГО ЗАБЕЗПЕЧЕННЯ.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
 </context>
 <context>
@@ -43,7 +43,7 @@
     <message>
         <location filename="../gui/ui/accountframe.ui" line="226"/>
         <source>Your receiving address</source>
-        <translation>Це ваша адреса для отримання карбованців</translation>
+        <translation>Це ваша адреса для отримання XDS</translation>
     </message>
     <message>
         <location filename="../gui/ui/accountframe.ui" line="229"/>
@@ -327,12 +327,12 @@
     <name>ConfirmSendDialog</name>
     <message>
         <location filename="../gui/ui/confirmsenddialog.ui" line="17"/>
-        <source>Confirm sending %1 KRB</source>
+        <source>Confirm sending %1 XDS</source>
         <translation>Підтвердіть надсилання %1 крб.</translation>
     </message>
     <message>
         <location filename="../gui/ui/confirmsenddialog.ui" line="25"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Are you sure you want to send &lt;strong&gt;%1 KRB&lt;/strong&gt;?&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Are you sure you want to send &lt;strong&gt;%1 XDS&lt;/strong&gt;?&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Надіслати &lt;strong&gt;%1 крб.&lt;/strong&gt;?&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
@@ -414,12 +414,12 @@
         <translation>Видалити вузол</translation>
     </message>
     <message>
-        <source>Wallet will connect to remote node running in local or global network. Please select node or specify IP address or domain name and port. In this mode wallet sends 0.25% fee from each transaction to the node, but no more than 1 KRB.</source>
+        <source>Wallet will connect to remote node running in local or global network. Please select node or specify IP address or domain name and port. In this mode wallet sends 0.25% fee from each transaction to the node, but no more than 1 XDS.</source>
         <translation type="vanished">Гаманець підключатиметься до віддаленого вузла, що запущений у локальній або глобальній мережі. Виберіть вузол, або вкажіть IP адресу чи домен та порт нового вузла. У цьому режимі він сплачує комісію для вузла в розмірі 0,25% від суми переказу, але не більше 1 крб.</translation>
     </message>
     <message>
         <location filename="../gui/ui/connectionsettingsdialog.ui" line="260"/>
-        <source>Wallet will connect to remote node running in local or global network. Please select node or specify IP address or domain name and port. In this mode wallet includes an additional fee from each transaction to the node, but no more than 1 KRB.</source>
+        <source>Wallet will connect to remote node running in local or global network. Please select node or specify IP address or domain name and port. In this mode wallet includes an additional fee from each transaction to the node, but no more than 1 XDS.</source>
         <translation>Гаманець підключатиметься до віддаленого вузла, що запущений у локальній або глобальній мережі. Виберіть вузол, або вкажіть IP адресу чи домен та порт нового вузла. У цьому режимі може стягуватись додаткова комісія для вузла при кожній транзакції. Максимальна сума комісії становить 1 крб.</translation>
     </message>
     <message>
@@ -874,7 +874,7 @@ Please wait...</source>
     <message>
         <location filename="../gui/ui/mainwindow.ui" line="566"/>
         <source>Mining</source>
-        <translation>Карбування</translation>
+        <translation>Майнінг</translation>
     </message>
     <message>
         <location filename="../gui/ui/mainwindow.ui" line="571"/>
@@ -987,7 +987,7 @@ Please wait...</source>
     </message>
     <message>
         <source>Start pool mining automatically</source>
-        <translation type="vanished">Запускати карбування при старті</translation>
+        <translation type="vanished">Запускати майнінг при старті</translation>
     </message>
     <message>
         <location filename="../gui/ui/mainwindow.ui" line="282"/>
@@ -1049,7 +1049,7 @@ Please wait...</source>
     <message>
         <location filename="../gui/ui/mainwindow.ui" line="653"/>
         <source>Start mining automatically</source>
-        <translation>Запускати карбування при старті</translation>
+        <translation>Запускати майнінг при старті</translation>
     </message>
     <message>
         <location filename="../gui/ui/mainwindow.ui" line="699"/>
@@ -1061,7 +1061,7 @@ Please wait...</source>
     <name>MiningFrame</name>
     <message>
         <source>Mining status</source>
-        <translation type="vanished">Стан карбування</translation>
+        <translation type="vanished">Стан майнінгу</translation>
     </message>
     <message>
         <source>Block found!</source>
@@ -1200,11 +1200,11 @@ Please wait...</source>
     <message>
         <location filename="../gui/ui/miningframe.ui" line="430"/>
         <source>Start mining</source>
-        <translation>Розпочати карбування</translation>
+        <translation>Розпочати майнінг</translation>
     </message>
     <message>
         <source>Pause mining</source>
-        <translation type="vanished">Призупинити карбування</translation>
+        <translation type="vanished">Призупинити майнінг</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -1212,16 +1212,16 @@ Please wait...</source>
     </message>
     <message>
         <source>Pool mining</source>
-        <translation type="vanished">Карбування в пулі</translation>
+        <translation type="vanished">Майнінг у пулі</translation>
     </message>
     <message>
         <location filename="../gui/ui/miningframe.ui" line="461"/>
         <source>Stop mining</source>
-        <translation>Зупинити карбування</translation>
+        <translation>Зупинити майнінг</translation>
     </message>
     <message>
         <source>Solo mining</source>
-        <translation type="vanished">Карбування соло</translation>
+        <translation type="vanished">Майнінг соло</translation>
     </message>
     <message>
         <source>Status</source>
@@ -1234,7 +1234,7 @@ Please wait...</source>
     <message>
         <location filename="../gui/ui/miningframe.ui" line="107"/>
         <source>Mining status:</source>
-        <translation>Стан карбування:</translation>
+        <translation>Стан майнінгу:</translation>
     </message>
     <message>
         <location filename="../gui/ui/miningframe.ui" line="20"/>
@@ -1511,8 +1511,8 @@ Please wait...</source>
         <translation type="vanished">Зберегти</translation>
     </message>
     <message>
-        <source>Wallet optimization is a background task performed in order to aggregate transactions outputs that are below optimization target into bigger ones. It allows to send larger amounts of KRB within one transaction. Wallet optimization is free for all users but takes some time.</source>
-        <translation type="vanished">Оптимізація гаманця - це фонове завдання, що виконується для об&apos;єднання виходів транзакцій, які нижче цільового показника оптимізації, в більш великі. Це дозволяє відправляти великі суми KRB в одній транзакції. Оптимізація гаманця безкоштовна для всіх користувачів, але займає деякий час.</translation>
+        <source>Wallet optimization is a background task performed in order to aggregate transactions outputs that are below optimization target into bigger ones. It allows to send larger amounts of XDS within one transaction. Wallet optimization is free for all users but takes some time.</source>
+        <translation type="vanished">Оптимізація гаманця - це фонове завдання, що виконується для об&apos;єднання виходів транзакцій, які нижче цільового показника оптимізації, в більш великі. Це дозволяє відправляти великі суми XDS в одній транзакції. Оптимізація гаманця безкоштовна для всіх користувачів, але займає деякий час.</translation>
     </message>
 </context>
 <context>
@@ -1685,8 +1685,8 @@ Please wait...</source>
     <name>PaymentServer</name>
     <message>
         <location filename="../PaymentServer.cpp" line="96"/>
-        <source>Cannot start karbowanec: click-to-pay handler</source>
-        <translation>Не вдалося запустити click-to-pay обробник karbowanec:</translation>
+        <source>Cannot start discrete: click-to-pay handler</source>
+        <translation>Не вдалося запустити click-to-pay обробник discrete:</translation>
     </message>
 </context>
 <context>
@@ -1751,7 +1751,7 @@ Please wait...</source>
     <message>
         <location filename="../main.cpp" line="144"/>
         <source>%1 wallet already running or cannot create lock file %2. Check your permissions.</source>
-        <translation>Гаманець Карбованця вже працює, або не може створити файл блокування %2. Перевірте права на запис.</translation>
+        <translation>Гаманець Discrete вже працює, або не може створити файл блокування %2. Перевірте права на запис.</translation>
     </message>
     <message>
         <location filename="../Update.cpp" line="61"/>
@@ -2374,7 +2374,7 @@ A small fee will be charged.</source>
     <message>
         <location filename="../gui/AccountFrame.cpp" line="388"/>
         <source>Your receiving address</source>
-        <translation>Це ваша адреса для отримання карбованців</translation>
+        <translation>Це ваша адреса для отримання XDS</translation>
     </message>
 </context>
 <context>
@@ -2618,8 +2618,8 @@ A small fee will be charged.</source>
     </message>
     <message>
         <location filename="../CommandLineParser.cpp" line="42"/>
-        <source>Karbowanec wallet</source>
-        <translation>Гаманець карбованця</translation>
+        <source>Discrete wallet</source>
+        <translation>Гаманець Discrete</translation>
     </message>
     <message>
         <location filename="../CommandLineParser.cpp" line="24"/>
@@ -2679,7 +2679,7 @@ A small fee will be charged.</source>
     <name>WalletGui::ConfirmSendDialog</name>
     <message>
         <location filename="../gui/ConfirmSendDialog.cpp" line="20"/>
-        <source>Confirm sending %1 KRB</source>
+        <source>Confirm sending %1 XDS</source>
         <translation>Підтвердіть надсилання %1 крб.</translation>
     </message>
     <message>
@@ -3065,12 +3065,12 @@ Are you sure?</source>
     </message>
     <message>
         <source>%1 Wallet %2</source>
-        <translation type="vanished">Карбованець в. %2 (%1)</translation>
+        <translation type="vanished">Discrete в. %2 (%1)</translation>
     </message>
     <message>
         <location filename="../gui/MainWindow.cpp" line="698"/>
-        <source>More info can be found at www.karbowanec.com in Documentation section</source>
-        <translation>Більше інформації на сайті www.karbowanec.com у розділі Документація.</translation>
+        <source>More info can be found at discrete.cash in Documentation section</source>
+        <translation>Більше інформації на сайті discrete.cash у розділі Документація.</translation>
     </message>
     <message>
         <location filename="../gui/MainWindow.cpp" line="723"/>
@@ -3119,8 +3119,8 @@ Are you sure?</source>
         <translation type="vanished">Сума: %1, хеш: %2</translation>
     </message>
     <message>
-        <source>Karbo Wallet</source>
-        <translation type="vanished">Карбованець</translation>
+        <source>Discrete Wallet</source>
+        <translation type="vanished">Discrete</translation>
     </message>
     <message>
         <source>New transaction received</source>
@@ -3197,15 +3197,15 @@ Are you sure?</source>
     </message>
     <message>
         <location filename="../gui/MainWindow.cpp" line="1121"/>
-        <source>%1 - Karbo Wallet %2</source>
-        <translation>%1 - Карбованець в. %2</translation>
+        <source>%1 - Discrete Wallet %2</source>
+        <translation>%1 - Discrete в. %2</translation>
     </message>
     <message>
         <location filename="../gui/MainWindow.cpp" line="136"/>
         <location filename="../gui/MainWindow.cpp" line="1171"/>
         <location filename="../gui/MainWindow.cpp" line="1199"/>
-        <source>Karbo Wallet %1</source>
-        <translation>Карбованець в. %1</translation>
+        <source>Discrete Wallet %1</source>
+        <translation>Discrete в. %1</translation>
     </message>
     <message>
         <location filename="../gui/MainWindow.cpp" line="500"/>
@@ -3262,27 +3262,27 @@ Are you sure?</source>
     </message>
     <message>
         <source>%1 Mining has started with %2 thread(s) at difficulty %3, good luck!</source>
-        <translation type="obsolete">%1 Розпочато карбування на %2 потоках зі складністю %3, щасти!</translation>
+        <translation type="obsolete">%1 Розпочато майнінг на %2 потоках зі складністю %3, щасти!</translation>
     </message>
     <message numerus="yes">
         <location filename="../Miner.cpp" line="268"/>
         <source>%1 Mining has started with %n thread(s) at difficulty %2, good luck!</source>
         <translation>
-            <numerusform>%1 Розпочато карбування на %n потоці зі складністю %2. Хай щастить!</numerusform>
-            <numerusform>%1 Розпочато карбування на %n потоках зі складністю %2. Хай щастить!</numerusform>
-            <numerusform>%1 Розпочато карбування на %n потоках зі складністю %2. Хай щастить!</numerusform>
+            <numerusform>%1 Розпочато майнінг на %n потоці зі складністю %2. Хай щастить!</numerusform>
+            <numerusform>%1 Розпочато майнінг на %n потоках зі складністю %2. Хай щастить!</numerusform>
+            <numerusform>%1 Розпочато майнінг на %n потоках зі складністю %2. Хай щастить!</numerusform>
         </translation>
     </message>
     <message>
         <source>Mining stopped, %1 threads finished</source>
-        <translation type="vanished">Карбування зупинено, потоків завершено: %1</translation>
+        <translation type="vanished">Майнінг зупинено, потоків завершено: %1</translation>
     </message>
     <message numerus="yes">
         <source>Mining stopped, %n threads finished</source>
         <translation type="vanished">
-            <numerusform>Карбування зупинено, завершено %n потік</numerusform>
-            <numerusform>Карбування зупинено, завершено %n потоки</numerusform>
-            <numerusform>Карбування зупинено, завершено %n потоків</numerusform>
+            <numerusform>Майнінг зупинено, завершено %n потік</numerusform>
+            <numerusform>Майнінг зупинено, завершено %n потоки</numerusform>
+            <numerusform>Майнінг зупинено, завершено %n потоків</numerusform>
         </translation>
     </message>
     <message>
@@ -3348,7 +3348,7 @@ Are you sure?</source>
     <name>WalletGui::MiningFrame</name>
     <message>
         <source>Mining. Hashrate: %1 H/s</source>
-        <translation type="vanished">Карбую. Хешрейт: %1 H/s</translation>
+        <translation type="vanished">Майню. Хешрейт: %1 H/s</translation>
     </message>
     <message>
         <source>Error: %1</source>
@@ -3459,21 +3459,21 @@ Are you sure?</source>
     </message>
     <message>
         <source>Mining solo. Hashrate: %1 H/s</source>
-        <translation type="vanished">Карбую соло. Швидкість: %1 H/s</translation>
+        <translation type="vanished">Майню соло. Швидкість: %1 H/s</translation>
     </message>
     <message>
         <source>Starting solo minining...</source>
-        <translation type="vanished">Запуск карбування соло...</translation>
+        <translation type="vanished">Запуск майнінгу соло...</translation>
     </message>
     <message>
         <source>Mining in pool. Hashrate: %1 H/s</source>
-        <translation type="vanished">Карбування в пулі. Швидкість: %1 H/s</translation>
+        <translation type="vanished">Майнінг у пулі. Швидкість: %1 H/s</translation>
     </message>
     <message>
         <location filename="../gui/MiningFrame.cpp" line="593"/>
         <location filename="../gui/MiningFrame.cpp" line="795"/>
         <source>Mining</source>
-        <translation>Карбування</translation>
+        <translation>Майнінг</translation>
     </message>
     <message>
         <source>%1</source>
@@ -3771,8 +3771,8 @@ Are you sure?</source>
     </message>
     <message>
         <location filename="../gui/SendFrame.cpp" line="236"/>
-        <source>Payment request should start with karbowanec:</source>
-        <translation>Платіжна вимога повинна починатись з karbowanec:</translation>
+        <source>Payment request should start with discrete:</source>
+        <translation>Платіжна вимога повинна починатись з discrete:</translation>
     </message>
     <message>
         <location filename="../gui/SendFrame.cpp" line="400"/>
@@ -4094,7 +4094,7 @@ when the wallet is synchronized</source>
     <message>
         <location filename="../gui/TransactionsFrame.cpp" line="72"/>
         <source>Mined</source>
-        <translation>Викарбувані</translation>
+        <translation>Намайнені</translation>
     </message>
     <message>
         <location filename="../gui/TransactionsFrame.cpp" line="73"/>
@@ -4158,7 +4158,7 @@ when the wallet is synchronized</source>
     <message>
         <location filename="../gui/TransactionsModel.cpp" line="327"/>
         <source>Mined, confirmations</source>
-        <translation>Викарбувано, непідтверджена</translation>
+        <translation>Намайнено, непідтверджена</translation>
     </message>
     <message>
         <location filename="../gui/TransactionsModel.cpp" line="330"/>
@@ -4183,9 +4183,9 @@ when the wallet is synchronized</source>
         <location filename="../gui/TransactionsModel.cpp" line="339"/>
         <source>Mined, %n confirmation(s)</source>
         <translation>
-            <numerusform>Викарбувано, %n підтвердження</numerusform>
-            <numerusform>Викарбувано, %n підтвердження</numerusform>
-            <numerusform>Викарбувано, %n підтверджень</numerusform>
+            <numerusform>Намайнено, %n підтвердження</numerusform>
+            <numerusform>Намайнено, %n підтвердження</numerusform>
+            <numerusform>Намайнено, %n підтверджень</numerusform>
         </translation>
     </message>
     <message numerus="yes">
