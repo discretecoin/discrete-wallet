@@ -29,8 +29,13 @@ private:
   void updateWalletAddress(const QString& _address);
   void walletClosed();
   void copyAddress();
+  bool isCurrentPaymentRequest(const QString& _walletAddress, quint64 _requestGeneration) const;
+  void completePaymentRequest(const QString& _walletAddress, const QString& _recipient,
+                              const QString& _amount, const QString& _label,
+                              quint64 _requestGeneration);
   QString wallet_address;
-  QString requestUri;
+  quint64 payment_request_generation = 0;
+  bool payment_request_lookup_in_progress = false;
 
   Q_SLOT void createRequestPaymentClicked();
 

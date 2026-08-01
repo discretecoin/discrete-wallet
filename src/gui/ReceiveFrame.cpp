@@ -8,18 +8,34 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QFontDatabase>
+#include <QMetaObject>
+#include <QPointer>
+#include <QTimer>
 #include <QToolTip>
 #include <QUrl>
 
+#include <memory>
+#include <system_error>
+
+#include "AccountNumber.h"
+#include "Common/StringTools.h"
 #include "MainWindow.h"
 #include "ReceiveFrame.h"
 #include "CurrencyAdapter.h"
+#include "NodeAdapter.h"
+#include "PqAddress.h"
 #include "WalletAdapter.h"
 #include "ShowPaymentRequestDialog.h"
 
 #include "ui_receiveframe.h"
 
 namespace WalletGui {
+
+namespace {
+
+constexpr int ACCOUNT_NUMBER_LOOKUP_TIMEOUT_MS = 10000;
+
+}
 
 ReceiveFrame::ReceiveFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::ReceiveFrame) {
   m_ui->setupUi(this);
@@ -28,7 +44,7 @@ ReceiveFrame::ReceiveFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Rec
   addressFont.setPixelSize(12);
   m_ui->m_addressText->setFont(addressFont);
   connect(&WalletAdapter::instance(), &WalletAdapter::updateWalletAddressSignal, this, &ReceiveFrame::updateWalletAddress);
-  connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &ReceiveFrame::walletClosed, Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &ReceiveFrame::walletClosed);
   connect(m_ui->m_copyAddressButton, &QPushButton::clicked, this, &ReceiveFrame::copyAddress);
 }
 
@@ -36,15 +52,21 @@ ReceiveFrame::~ReceiveFrame() {
 }
 
 void ReceiveFrame::updateWalletAddress(const QString& _address) {
+  ++payment_request_generation;
+  payment_request_lookup_in_progress = false;
   wallet_address = _address;
   m_ui->m_addressText->setPlainText(_address);
   m_ui->m_copyAddressButton->setEnabled(!_address.isEmpty());
+  m_ui->m_createPaymentRequest->setEnabled(!_address.isEmpty());
 }
 
 void ReceiveFrame::walletClosed() {
+  ++payment_request_generation;
+  payment_request_lookup_in_progress = false;
   wallet_address.clear();
   m_ui->m_addressText->clear();
   m_ui->m_copyAddressButton->setEnabled(false);
+  m_ui->m_createPaymentRequest->setEnabled(false);
 }
 
 void ReceiveFrame::copyAddress() {
@@ -62,19 +84,162 @@ void ReceiveFrame::copyAddress() {
     tr("Copied"), m_ui->m_copyAddressButton);
 }
 
-void ReceiveFrame::createRequestPaymentClicked() {
-  requestUri = "discrete:" + wallet_address;
-  if(CurrencyAdapter::instance().parseAmount(m_ui->m_requestAmountSpin->cleanText()) != 0){
-    requestUri.append("?amount=" + m_ui->m_requestAmountSpin->cleanText());
+bool ReceiveFrame::isCurrentPaymentRequest(const QString& _walletAddress,
+                                           quint64 _requestGeneration) const {
+  return payment_request_lookup_in_progress &&
+         payment_request_generation == _requestGeneration &&
+         wallet_address == _walletAddress &&
+         WalletAdapter::instance().isOpen();
+}
+
+void ReceiveFrame::completePaymentRequest(const QString& _walletAddress,
+                                          const QString& _recipient,
+                                          const QString& _amount,
+                                          const QString& _label,
+                                          quint64 _requestGeneration) {
+  if (!isCurrentPaymentRequest(_walletAddress, _requestGeneration)) {
+    return;
   }
 
-  if(!m_ui->m_payerLabel->text().isEmpty()) {
-    requestUri.append((requestUri.contains('?') ? "&label=" : "?label=") + QUrl::toPercentEncoding(m_ui->m_payerLabel->text()));
+  payment_request_lookup_in_progress = false;
+  m_ui->m_createPaymentRequest->setEnabled(true);
+
+  // An asynchronous lookup can finish while a password or another modal
+  // dialog is open. Never reveal a payment request over that dialog.
+  if (QApplication::activeModalWidget() != nullptr) {
+    return;
+  }
+
+  QString requestUri = "discrete:" + _recipient;
+  if (!_amount.isEmpty()) {
+    requestUri.append("?amount=" + _amount);
+  }
+
+  if (!_label.isEmpty()) {
+    requestUri.append((requestUri.contains('?') ? "&label=" : "?label=") +
+                      QUrl::toPercentEncoding(_label));
   }
 
   ShowPaymentRequestDialog dlg(&MainWindow::instance());
   dlg.setData(requestUri);
   dlg.exec();
+}
+
+void ReceiveFrame::createRequestPaymentClicked() {
+  if (wallet_address.isEmpty() || payment_request_lookup_in_progress) {
+    return;
+  }
+
+  const QString requestedWalletAddress = wallet_address;
+  const quint64 requestedPaymentRequestGeneration = ++payment_request_generation;
+  const QString requestedAmount =
+    CurrencyAdapter::instance().parseAmount(m_ui->m_requestAmountSpin->cleanText()) != 0 ?
+      m_ui->m_requestAmountSpin->cleanText() : QString();
+  const QString requestedLabel = m_ui->m_payerLabel->text();
+
+  payment_request_lookup_in_progress = true;
+  m_ui->m_createPaymentRequest->setEnabled(false);
+
+  // Account-number lookup must never make invoice creation hang. If the node
+  // is unreachable or too old to answer, fall back to the self-contained PQ
+  // address. A later callback is ignored by the per-request generation check.
+  QPointer<ReceiveFrame> self(this);
+  QTimer::singleShot(ACCOUNT_NUMBER_LOOKUP_TIMEOUT_MS, this,
+    [self, requestedWalletAddress, requestedAmount, requestedLabel,
+     requestedPaymentRequestGeneration]() {
+      if (self) {
+        self->completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
+          requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+      }
+    });
+
+  CryptoNote::PqAddress ownAddress;
+  if (!CryptoNote::decodePqAddress(requestedWalletAddress.toStdString(),
+                                   CurrencyAdapter::instance().isTestnet(), ownAddress)) {
+    completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
+      requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+    return;
+  }
+
+  // The displayed address is the canonical identity here. In particular,
+  // tracking wallets do not have the spend secret used by getOwnPqIdentityHex.
+  const QString ownViewPubHex = QString::fromStdString(
+    Common::toHex(ownAddress.viewPub.data(), ownAddress.viewPub.size()));
+  const QString ownSpendPubHex = QString::fromStdString(
+    Common::toHex(ownAddress.spendPub.data(), ownAddress.spendPub.size()));
+
+  const uint32_t fingerprint = CryptoNote::pqAccountFingerprint(
+    CurrencyAdapter::instance().isTestnet(),
+    ownAddress.spendPub.data(), ownAddress.spendPub.size(),
+    ownAddress.viewPub.data(), ownAddress.viewPub.size());
+  auto registered = std::make_shared<bool>(false);
+  auto blockHeight = std::make_shared<uint32_t>(0);
+  auto txIndex = std::make_shared<uint32_t>(0);
+
+  // Registration visibility is not sufficient: getPqAccount can return (H,I)
+  // before first-seen finality, while a payer still cannot resolve that number.
+  // Use the payer-side resolve path below as the actual payability gate.
+  NodeAdapter::instance().getPqAccount(
+    ownViewPubHex.toStdString(), ownSpendPubHex.toStdString(),
+    *registered, *blockHeight, *txIndex,
+    [self, registered, blockHeight, txIndex, requestedWalletAddress,
+     requestedAmount, requestedLabel, requestedPaymentRequestGeneration, fingerprint,
+     ownViewPubHex, ownSpendPubHex](std::error_code ec) {
+      QMetaObject::invokeMethod(qApp,
+        [self, ec, registered, blockHeight, txIndex, requestedWalletAddress,
+         requestedAmount, requestedLabel, requestedPaymentRequestGeneration, fingerprint,
+         ownViewPubHex, ownSpendPubHex]() {
+          if (!self || !self->isCurrentPaymentRequest(requestedWalletAddress,
+                                                       requestedPaymentRequestGeneration)) {
+            return;
+          }
+
+          if (ec || !*registered) {
+            self->completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
+              requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+            return;
+          }
+
+          auto found = std::make_shared<bool>(false);
+          auto resolvedViewPubHex = std::make_shared<std::string>();
+          auto resolvedSpendPubHex = std::make_shared<std::string>();
+          NodeAdapter::instance().resolvePqAccount(
+            *blockHeight, *txIndex, *found, *resolvedViewPubHex, *resolvedSpendPubHex,
+            [self, found, resolvedViewPubHex, resolvedSpendPubHex, blockHeight, txIndex,
+             requestedWalletAddress, requestedAmount, requestedLabel,
+              requestedPaymentRequestGeneration, fingerprint, ownViewPubHex,
+              ownSpendPubHex](std::error_code resolveError) {
+              QMetaObject::invokeMethod(qApp,
+                [self, resolveError, found, resolvedViewPubHex, resolvedSpendPubHex,
+                 blockHeight, txIndex, requestedWalletAddress, requestedAmount,
+                 requestedLabel, requestedPaymentRequestGeneration, fingerprint,
+                 ownViewPubHex, ownSpendPubHex]() {
+                  if (!self || !self->isCurrentPaymentRequest(requestedWalletAddress,
+                                                               requestedPaymentRequestGeneration)) {
+                    return;
+                  }
+
+                  QString recipient = requestedWalletAddress;
+                  // Do not trust the short fingerprint alone. Only publish the
+                  // account number when its resolved keys exactly match the
+                  // keys captured from the wallet that initiated this request.
+                  if (!resolveError && *found &&
+                      QString::fromStdString(*resolvedViewPubHex).compare(
+                        ownViewPubHex, Qt::CaseInsensitive) == 0 &&
+                      QString::fromStdString(*resolvedSpendPubHex).compare(
+                        ownSpendPubHex, Qt::CaseInsensitive) == 0) {
+                    recipient = QString::fromStdString(
+                      CryptoNote::AccountNumber{*blockHeight, *txIndex}.toString(fingerprint));
+                  }
+
+                  self->completePaymentRequest(requestedWalletAddress, recipient,
+                    requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+                },
+                Qt::QueuedConnection);
+            });
+        },
+        Qt::QueuedConnection);
+    });
 }
 
 }
