@@ -19,27 +19,27 @@
   <property name="frameShadow">
    <enum>QFrame::Shadow::Raised</enum>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout" stretch="1,0">
+  <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,1">
    <item>
     <widget class="QGroupBox" name="m_addressGroup">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>1</verstretch>
+       <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
      <property name="minimumSize">
       <size>
        <width>0</width>
-       <height>260</height>
+        <height>0</height>
       </size>
      </property>
      <property name="title">
-      <string>Your receiving address</string>
+       <string>Full receiving address</string>
      </property>
      <layout class="QVBoxLayout" name="addressLayout">
       <item>
-       <widget class="QPlainTextEdit" name="m_addressText">
+        <widget class="QLineEdit" name="m_addressText">
         <property name="toolTip">
          <string>Your full wallet address</string>
         </property>
@@ -49,8 +49,18 @@
         <property name="placeholderText">
          <string>Open a wallet to view its receiving address.</string>
         </property>
-       </widget>
-      </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="m_addressHintLabel">
+         <property name="text">
+          <string>This full address always works. Payment requests use your verified account number when available.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
       <item>
        <layout class="QHBoxLayout" name="addressActionsLayout">
         <item>
@@ -151,8 +161,8 @@
            <property name="minimum">
             <double>0.000000000000000</double>
            </property>
-           <property name="maximum">
-            <double>999999999999999.000000000000000</double>
+            <property name="maximum">
+             <double>9999999.990000000000000</double>
            </property>
            <property name="singleStep">
             <double>1.000000000000000</double>
@@ -278,6 +288,19 @@
       </item>
      </layout>
     </widget>
+   </item>
+   <item>
+    <spacer name="receiveContentSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
    </item>
   </layout>
  </widget>

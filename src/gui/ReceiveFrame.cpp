@@ -34,6 +34,7 @@ namespace WalletGui {
 namespace {
 
 constexpr int ACCOUNT_NUMBER_LOOKUP_TIMEOUT_MS = 10000;
+constexpr int QR_MAX_BYTE_MODE_PAYLOAD = 2953;
 
 }
 
@@ -55,7 +56,8 @@ void ReceiveFrame::updateWalletAddress(const QString& _address) {
   ++payment_request_generation;
   payment_request_lookup_in_progress = false;
   wallet_address = _address;
-  m_ui->m_addressText->setPlainText(_address);
+  m_ui->m_addressText->setText(_address);
+  m_ui->m_addressText->setCursorPosition(0);
   m_ui->m_copyAddressButton->setEnabled(!_address.isEmpty());
   m_ui->m_createPaymentRequest->setEnabled(!_address.isEmpty());
 }
@@ -96,7 +98,8 @@ void ReceiveFrame::completePaymentRequest(const QString& _walletAddress,
                                           const QString& _recipient,
                                           const QString& _amount,
                                           const QString& _label,
-                                          quint64 _requestGeneration) {
+                                          quint64 _requestGeneration,
+                                          PaymentRequestRecipientState _recipientState) {
   if (!isCurrentPaymentRequest(_walletAddress, _requestGeneration)) {
     return;
   }
@@ -120,8 +123,23 @@ void ReceiveFrame::completePaymentRequest(const QString& _walletAddress,
                       QUrl::toPercentEncoding(_label));
   }
 
+  const bool usesAccountNumber =
+    _recipientState == PaymentRequestRecipientState::AccountNumber;
+  const bool qrAvailable = usesAccountNumber &&
+    requestUri.toUtf8().size() <= QR_MAX_BYTE_MODE_PAYLOAD;
+  QString recipientStatus;
+  if (qrAvailable) {
+    recipientStatus = tr("Using a verified account number. This compact payment request can be scanned as a QR code.");
+  } else if (usesAccountNumber) {
+    recipientStatus = tr("Using a verified account number, but the complete payment request is too large for a QR code.");
+  } else if (_recipientState == PaymentRequestRecipientState::AccountNumberNotReady) {
+    recipientStatus = tr("The account number is not payable yet. This request uses the full wallet address and is too large for a QR code.");
+  } else {
+    recipientStatus = tr("A payable account number could not be verified. This request uses the full wallet address and is too large for a QR code.");
+  }
+
   ShowPaymentRequestDialog dlg(&MainWindow::instance());
-  dlg.setData(requestUri);
+  dlg.setData(requestUri, qrAvailable, recipientStatus);
   dlg.exec();
 }
 
@@ -149,7 +167,8 @@ void ReceiveFrame::createRequestPaymentClicked() {
      requestedPaymentRequestGeneration]() {
       if (self) {
         self->completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
-          requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+          requestedAmount, requestedLabel, requestedPaymentRequestGeneration,
+          PaymentRequestRecipientState::FullAddressFallback);
       }
     });
 
@@ -157,7 +176,8 @@ void ReceiveFrame::createRequestPaymentClicked() {
   if (!CryptoNote::decodePqAddress(requestedWalletAddress.toStdString(),
                                    CurrencyAdapter::instance().isTestnet(), ownAddress)) {
     completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
-      requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+      requestedAmount, requestedLabel, requestedPaymentRequestGeneration,
+      PaymentRequestRecipientState::FullAddressFallback);
     return;
   }
 
@@ -196,7 +216,8 @@ void ReceiveFrame::createRequestPaymentClicked() {
 
           if (ec || !*registered) {
             self->completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
-              requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+              requestedAmount, requestedLabel, requestedPaymentRequestGeneration,
+              PaymentRequestRecipientState::FullAddressFallback);
             return;
           }
 
@@ -220,6 +241,8 @@ void ReceiveFrame::createRequestPaymentClicked() {
                   }
 
                   QString recipient = requestedWalletAddress;
+                  PaymentRequestRecipientState recipientState =
+                    PaymentRequestRecipientState::FullAddressFallback;
                   // Do not trust the short fingerprint alone. Only publish the
                   // account number when its resolved keys exactly match the
                   // keys captured from the wallet that initiated this request.
@@ -230,10 +253,14 @@ void ReceiveFrame::createRequestPaymentClicked() {
                         ownSpendPubHex, Qt::CaseInsensitive) == 0) {
                     recipient = QString::fromStdString(
                       CryptoNote::AccountNumber{*blockHeight, *txIndex}.toString(fingerprint));
+                    recipientState = PaymentRequestRecipientState::AccountNumber;
+                  } else if (!resolveError && !*found) {
+                    recipientState = PaymentRequestRecipientState::AccountNumberNotReady;
                   }
 
                   self->completePaymentRequest(requestedWalletAddress, recipient,
-                    requestedAmount, requestedLabel, requestedPaymentRequestGeneration);
+                    requestedAmount, requestedLabel, requestedPaymentRequestGeneration,
+                    recipientState);
                 },
                 Qt::QueuedConnection);
             });

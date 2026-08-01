@@ -82,6 +82,7 @@ private:
   QMenu *trayIconMenu;
 
   QString m_statusBarText;
+  QString m_pendingPaymentRequest;
 
   MainWindow();
   ~MainWindow();
