@@ -150,9 +150,16 @@ void ReceiveFrame::createRequestPaymentClicked() {
 
   const QString requestedWalletAddress = wallet_address;
   const quint64 requestedPaymentRequestGeneration = ++payment_request_generation;
-  const QString requestedAmount =
-    CurrencyAdapter::instance().parseAmount(m_ui->m_requestAmountSpin->cleanText()) != 0 ?
-      m_ui->m_requestAmountSpin->cleanText() : QString();
+  const double requestedAmountValue = m_ui->m_requestAmountSpin->value();
+  // URI amounts are protocol data, not localized display text. Always use a
+  // dot decimal separator so the generated request can be parsed on every
+  // locale and by the HTTPS payment-link bridge.
+  const QString canonicalAmountText = QString::number(
+    requestedAmountValue, 'f', m_ui->m_requestAmountSpin->decimals());
+  const quint64 requestedAtomicAmount =
+    CurrencyAdapter::instance().parseAmount(canonicalAmountText);
+  const QString requestedAmount = requestedAtomicAmount == 0 ? QString() :
+    CurrencyAdapter::instance().formatAmount(requestedAtomicAmount);
   const QString requestedLabel = m_ui->m_payerLabel->text();
 
   payment_request_lookup_in_progress = true;

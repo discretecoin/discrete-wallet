@@ -28,6 +28,7 @@ private:
   QString payment_request_uri;
 
   Q_SLOT void copyUri();
+  Q_SLOT void copyShareLink();
   Q_SLOT void saveUri();
   Q_SLOT void showQrCode();
   Q_SLOT void openPaymentRequest();

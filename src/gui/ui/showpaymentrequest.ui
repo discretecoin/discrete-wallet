@@ -74,6 +74,19 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="m_copyShareLinkButton">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="toolTip">
+        <string>Copy a web link that can be shared in chats and opened in a browser.</string>
+       </property>
+       <property name="text">
+        <string>Copy share link</string>
+       </property>
+      </widget>
+     </item>
+     <item>
      <widget class="QPushButton" name="m_saveUriButton">
        <property name="text">
         <string>Save URI</string>

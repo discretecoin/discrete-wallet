@@ -16,10 +16,22 @@
 
 namespace WalletGui {
 
+namespace {
+
+// Official HTTPS bridge for sharing compact payment requests. The bridge
+// validates the request and hands its discrete: URI to an installed wallet;
+// it never submits a transaction itself.
+const QString PAYMENT_SHARE_LINK_BASE_URL =
+  QStringLiteral("https://discrete.cash/pay/#");
+
+}
+
 ShowPaymentRequestDialog::ShowPaymentRequestDialog(QWidget* _parent) : QDialog(_parent), m_ui(new Ui::ShowPaymentRequestDialog) {
   m_ui->setupUi(this);
   connect(m_ui->m_showQrCodeButton, &QPushButton::clicked,
           this, &ShowPaymentRequestDialog::showQrCode);
+  connect(m_ui->m_copyShareLinkButton, &QPushButton::clicked,
+          this, &ShowPaymentRequestDialog::copyShareLink);
   connect(m_ui->m_paymentRequestUriText, &QTextBrowser::anchorClicked,
           this, [this](const QUrl&) { openPaymentRequest(); });
 }
@@ -37,6 +49,7 @@ void ShowPaymentRequestDialog::setData(const QString& _paymentRequest,
       .arg(escapedPaymentRequest, escapedPaymentRequest));
   m_ui->m_recipientStatusLabel->setText(_recipientStatus);
   m_ui->m_showQrCodeButton->setVisible(_qrAvailable);
+  m_ui->m_copyShareLinkButton->setVisible(_qrAvailable);
 
   if (_qrAvailable) {
     const int compactTextHeight = qMax(44,
@@ -66,6 +79,25 @@ void ShowPaymentRequestDialog::copyUri() {
   mimeData->setHtml(QStringLiteral("<a href=\"%1\">%2</a>")
     .arg(escapedPaymentRequest, escapedPaymentRequest));
   mimeData->setUrls({QUrl(payment_request_uri)});
+  QApplication::clipboard()->setMimeData(mimeData);
+}
+
+void ShowPaymentRequestDialog::copyShareLink() {
+  if (payment_request_uri.isEmpty() || !m_ui->m_copyShareLinkButton->isVisible()) {
+    return;
+  }
+
+  // The payment URI is already canonical: the recipient and amount contain
+  // no URL delimiters, while the label value is UTF-8 percent-encoded when the
+  // request is built. Keep the URI readable in the fragment instead of
+  // percent-encoding the complete request a second time.
+  const QString shareLink = PAYMENT_SHARE_LINK_BASE_URL + payment_request_uri;
+  const QString escapedShareLink = shareLink.toHtmlEscaped();
+  QMimeData* mimeData = new QMimeData();
+  mimeData->setText(shareLink);
+  mimeData->setHtml(QStringLiteral("<a href=\"%1\">%2</a>")
+    .arg(escapedShareLink, escapedShareLink));
+  mimeData->setUrls({QUrl(shareLink)});
   QApplication::clipboard()->setMimeData(mimeData);
 }
 
