@@ -90,47 +90,73 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="m_feeSpin">
-        <property name="enabled">
-         <bool>false</bool>
+       <layout class="QHBoxLayout" name="feeLayout">
+        <property name="spacing">
+         <number>6</number>
         </property>
-        <property name="minimumSize">
-         <size>
-          <width>150</width>
-          <height>0</height>
-         </size>
+        <property name="leftMargin">
+         <number>0</number>
         </property>
-        <property name="baseSize">
-         <size>
-          <width>150</width>
-          <height>0</height>
-         </size>
+        <property name="topMargin">
+         <number>0</number>
         </property>
-        <property name="cursor">
-         <cursorShape>IBeamCursor</cursorShape>
+        <property name="rightMargin">
+         <number>0</number>
         </property>
-        <property name="locale">
-         <locale language="English" country="UnitedStates"/>
+        <property name="bottomMargin">
+         <number>0</number>
         </property>
-        <property name="suffix">
-         <string/>
-        </property>
-        <property name="decimals">
-         <number>2</number>
-        </property>
-        <property name="minimum">
-         <double>0.010000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>999999999999999.000000000000000</double>
-        </property>
-        <property name="singleStep">
-         <double>0.010000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.010000000000000</double>
-        </property>
-       </widget>
+        <item>
+         <widget class="QDoubleSpinBox" name="m_feeSpin">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>150</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="baseSize">
+           <size>
+            <width>150</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="cursor">
+           <cursorShape>IBeamCursor</cursorShape>
+          </property>
+          <property name="locale">
+           <locale language="English" country="UnitedStates"/>
+          </property>
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="minimum">
+           <double>0.010000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>999999999999999.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.010000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.010000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="m_feeCurrencyLabel">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string notr="true">XDS</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item row="0" column="0">
        <widget class="QCheckBox" name="m_manualFeeCheckBox">
@@ -372,6 +398,22 @@
     <hint type="destinationlabel">
      <x>780</x>
      <y>485</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>m_manualFeeCheckBox</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>m_feeCurrencyLabel</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>158</x>
+     <y>478</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>365</x>
+     <y>478</y>
     </hint>
    </hints>
   </connection>
