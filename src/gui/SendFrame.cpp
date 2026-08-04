@@ -53,7 +53,7 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationProgressUpdatedSignal,
     this, &SendFrame::walletSynchronizationInProgress, Qt::QueuedConnection);
 
-  m_ui->m_feeSpin->setSuffix(" " + CurrencyAdapter::instance().getCurrencyTicker().toUpper());
+  m_ui->m_feeCurrencyLabel->setText(CurrencyAdapter::instance().getCurrencyTicker().toUpper());
   m_ui->m_remote_label->hide();
   //m_ui->m_sendButton->setEnabled(false);
   m_ui->m_feeSpin->setMinimum(getMinimalFee());
