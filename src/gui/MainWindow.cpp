@@ -6,6 +6,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <QCloseEvent>
+#include <QDialog>
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QInputDialog>
@@ -807,13 +808,51 @@ void MainWindow::verifyMessage() {
 }
 
 void MainWindow::handlePaymentRequest(QString _request) {
-  if (Settings::instance().isTrackingMode()) {
-      isTrackingMode();
-      return;
+  if (WalletAdapter::instance().isOpen() && Settings::instance().isTrackingMode()) {
+    m_pendingPaymentRequest.clear();
+    isTrackingMode();
+    showNormal();
+    raise();
+    activateWindow();
+    showMessage(tr("A tracking wallet cannot send payments."), QtWarningMsg);
+    return;
   }
+
+  if (!WalletAdapter::instance().isOpen() || !m_ui->m_sendAction->isEnabled()) {
+    // A protocol handler can deliver the URI before the last wallet has
+    // finished opening. Keep the latest request and apply it once Send is
+    // actually available instead of parsing it into a hidden, disabled frame.
+    m_pendingPaymentRequest = _request;
+    showNormal();
+    raise();
+    activateWindow();
+    return;
+  }
+
+  if (QWidget* modalWidget = QApplication::activeModalWidget()) {
+    m_pendingPaymentRequest = _request;
+    if (QDialog* modalDialog = qobject_cast<QDialog*>(modalWidget)) {
+      connect(modalDialog, &QDialog::finished, this, [this](int) {
+        if (m_pendingPaymentRequest.isEmpty()) {
+          return;
+        }
+
+        const QString pendingPaymentRequest = m_pendingPaymentRequest;
+        m_pendingPaymentRequest.clear();
+        QTimer::singleShot(0, this, [this, pendingPaymentRequest]() {
+          handlePaymentRequest(pendingPaymentRequest);
+        });
+      }, Qt::SingleShotConnection);
+    }
+    return;
+  }
+
+  m_pendingPaymentRequest.clear();
   m_ui->m_sendAction->trigger();
   m_ui->m_sendFrame->parsePaymentRequest(_request);
-  QWidget::activateWindow();
+  showNormal();
+  raise();
+  activateWindow();
 }
 
 void MainWindow::onUriOpenSignal() {
@@ -953,6 +992,9 @@ void MainWindow::showMessage(const QString& _text, QtMsgType _type) {
     break;
   case QtDebugMsg:
     QMessageBox::information(this, tr("Wallet"), _text);
+    break;
+  case QtWarningMsg:
+    QMessageBox::warning(this, tr("Wallet warning"), _text);
     break;
   default:
     break;
@@ -1095,6 +1137,14 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
 
     if (Settings::instance().isTrackingMode()) {
       isTrackingMode();
+    }
+
+    if (!m_pendingPaymentRequest.isEmpty()) {
+      const QString pendingPaymentRequest = m_pendingPaymentRequest;
+      m_pendingPaymentRequest.clear();
+      QTimer::singleShot(0, this, [this, pendingPaymentRequest]() {
+        handlePaymentRequest(pendingPaymentRequest);
+      });
     }
 
     WalletAdapter::instance().autoBackup();

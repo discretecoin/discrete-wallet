@@ -19,16 +19,19 @@ public:
   ShowPaymentRequestDialog(QWidget* _parent);
   ~ShowPaymentRequestDialog();
 
-  void setData(const QString &paymentRequest);
-
-  QString payment_request_uri;
+  void setData(const QString& _paymentRequest, bool _qrAvailable,
+               const QString& _recipientStatus);
 
 
 private:
   QScopedPointer<Ui::ShowPaymentRequestDialog> m_ui;
+  QString payment_request_uri;
 
   Q_SLOT void copyUri();
+  Q_SLOT void copyShareLink();
   Q_SLOT void saveUri();
+  Q_SLOT void showQrCode();
+  Q_SLOT void openPaymentRequest();
 
 };
 
