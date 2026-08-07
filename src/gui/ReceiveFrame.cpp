@@ -40,7 +40,7 @@ constexpr int QR_MAX_BYTE_MODE_PAYLOAD = 2953;
 
 ReceiveFrame::ReceiveFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::ReceiveFrame) {
   m_ui->setupUi(this);
-  m_ui->m_requestAmountSpin->setSuffix(" " + CurrencyAdapter::instance().getCurrencyTicker().toUpper());
+  m_ui->m_requestAmountCurrencyLabel->setText(CurrencyAdapter::instance().getCurrencyTicker().toUpper());
   QFont addressFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   addressFont.setPixelSize(12);
   m_ui->m_addressText->setFont(addressFont);

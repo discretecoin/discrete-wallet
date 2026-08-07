@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: Karbo Wallet
-Source: https://github.com/seredat/karbowanecwallet
+Upstream-Name: Discrete Wallet
+Source: https://github.com/discretecoin/discrete-wallet
 
 Files: *
 Copyright: 2011-2015, The Cryptonote developers
