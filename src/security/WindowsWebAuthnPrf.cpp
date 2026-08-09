@@ -24,6 +24,18 @@ constexpr wchar_t kRpId[] = L"wallet.discrete.cash";
 constexpr wchar_t kRpName[] = L"Discrete Wallet";
 
 #ifdef Q_OS_WIN
+HWND prepareWebAuthnParent(WId parentWindow) {
+  HWND window = reinterpret_cast<HWND>(parentWindow);
+  if (window != nullptr && IsWindow(window)) {
+    // Do this synchronously immediately before the WebAuthn call. Qt's
+    // activateWindow() is asynchronous and can otherwise raise the wallet
+    // after Windows Security has already opened.
+    SetForegroundWindow(window);
+    SetFocus(window);
+  }
+  return window;
+}
+
 QByteArray randomBytes(int size, QString& error) {
   QByteArray bytes(size, Qt::Uninitialized);
   if (RAND_bytes(reinterpret_cast<unsigned char*>(bytes.data()), bytes.size()) != 1) {
@@ -142,7 +154,7 @@ bool WindowsWebAuthnPrf::enroll(WId parentWindow, const QByteArray& walletBindin
 
   PWEBAUTHN_CREDENTIAL_ATTESTATION attestation = nullptr;
   const HRESULT result = WebAuthNAuthenticatorMakeCredential(
-      reinterpret_cast<HWND>(parentWindow), &rp, &user, &parameters, &client,
+      prepareWebAuthnParent(parentWindow), &rp, &user, &parameters, &client,
       &options, &attestation);
   if (FAILED(result) || attestation == nullptr) {
     error = webAuthnError(result, QObject::tr("YubiKey enrollment"));
@@ -243,7 +255,7 @@ bool WindowsWebAuthnPrf::unlock(WId parentWindow, const QByteArray& credentialId
 
   PWEBAUTHN_ASSERTION assertion = nullptr;
   const HRESULT result = WebAuthNAuthenticatorGetAssertion(
-      reinterpret_cast<HWND>(parentWindow), kRpId, &client, &options, &assertion);
+      prepareWebAuthnParent(parentWindow), kRpId, &client, &options, &assertion);
   if (FAILED(result) || assertion == nullptr) {
     error = webAuthnError(result, QObject::tr("YubiKey authorization"));
     if (assertion != nullptr) {

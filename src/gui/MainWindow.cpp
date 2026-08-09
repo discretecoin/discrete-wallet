@@ -785,8 +785,6 @@ void MainWindow::showMnemonicSeed() {
         return;
       }
 
-      raise();
-      activateWindow();
       const QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(QString(), winId());
       if (mnemonicSeed.isEmpty()) {
         return;
