@@ -6,6 +6,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <cwchar>
+
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 
@@ -50,6 +52,24 @@ QString webAuthnError(HRESULT result, const QString& action) {
       : QString::fromWCharArray(name);
   return QObject::tr("%1 failed: %2").arg(action, detail);
 }
+
+bool boolExtensionEnabled(const WEBAUTHN_EXTENSIONS& extensions,
+                          const wchar_t* identifier) {
+  if (extensions.pExtensions == nullptr) {
+    return false;
+  }
+  for (DWORD index = 0; index < extensions.cExtensions; ++index) {
+    const WEBAUTHN_EXTENSION& extension = extensions.pExtensions[index];
+    if (extension.pwszExtensionIdentifier != nullptr &&
+        std::wcscmp(extension.pwszExtensionIdentifier, identifier) == 0 &&
+        extension.cbExtension == sizeof(BOOL) &&
+        extension.pvExtension != nullptr) {
+      return *static_cast<const BOOL*>(extension.pvExtension) != FALSE;
+    }
+  }
+  return false;
+}
+
 #endif
 
 }  // namespace
@@ -132,13 +152,30 @@ bool WindowsWebAuthnPrf::enroll(WId parentWindow, const QByteArray& walletBindin
     return false;
   }
 
-  const bool prfEnabled = attestation->dwVersion >= WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5 &&
-                          attestation->bPrfEnabled;
+  // Request both WebAuthn PRF and its CTAP hmac-secret capability. Windows
+  // reports these through independent output paths and can leave bPrfEnabled
+  // false while the explicitly requested hmac-secret output is true, including
+  // with current YubiKey 5.8 firmware.
+  const bool webAuthnPrfEnabled =
+      attestation->dwVersion >= WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_5 &&
+      attestation->bPrfEnabled;
+  const bool hmacSecretEnabled =
+      attestation->dwVersion >= WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_2 &&
+      boolExtensionEnabled(attestation->Extensions,
+                           WEBAUTHN_EXTENSIONS_IDENTIFIER_HMAC_SECRET);
+  const bool prfEnabled = webAuthnPrfEnabled || hmacSecretEnabled;
+  const DWORD attestationVersion = attestation->dwVersion;
   QByteArray credential(reinterpret_cast<const char*>(attestation->pbCredentialId),
                         static_cast<int>(attestation->cbCredentialId));
   WebAuthNFreeCredentialAttestation(attestation);
   if (!prfEnabled || credential.isEmpty()) {
-    error = QObject::tr("The selected security key did not create a PRF-enabled FIDO2 credential. A YubiKey with FIDO2 hmac-secret support and a configured PIN is required.");
+    error = QObject::tr(
+        "The selected security key did not create a PRF-enabled FIDO2 credential "
+        "(attestation v%1, Windows PRF=%2, hmac-secret=%3). A YubiKey with FIDO2 "
+        "hmac-secret support and a configured PIN is required.")
+        .arg(attestationVersion)
+        .arg(webAuthnPrfEnabled ? QObject::tr("yes") : QObject::tr("no"))
+        .arg(hmacSecretEnabled ? QObject::tr("yes") : QObject::tr("no"));
     return false;
   }
 
