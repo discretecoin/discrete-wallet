@@ -777,9 +777,6 @@ void MainWindow::showMnemonicSeed() {
   }
 
   if (WalletAdapter::instance().isYubiKeyProtected()) {
-    // Let the password dialog fully close and return focus to the main window.
-    // The mnemonic dialog must not exist until WebAuthn has succeeded, otherwise
-    // Qt can place that modal dialog above the Windows Security UI.
     QTimer::singleShot(0, this, [this]() {
       if (!WalletAdapter::instance().isOpen()) {
         return;

@@ -6,12 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <cwchar>
-#include <thread>
-#include <vector>
 
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
@@ -29,97 +24,52 @@ constexpr wchar_t kRpId[] = L"wallet.discrete.cash";
 constexpr wchar_t kRpName[] = L"Discrete Wallet";
 
 #ifdef Q_OS_WIN
-constexpr wchar_t kCredentialDialogClass[] = L"Credential Dialog Xaml Host";
-constexpr wchar_t kCredentialUiBrokerProcess[] = L"CredentialUIBroker.exe";
-
-bool isCredentialUiBrokerWindow(HWND window) {
-  if (!IsWindowVisible(window)) {
-    return false;
-  }
-
-  wchar_t className[128]{};
-  if (GetClassNameW(window, className, static_cast<int>(std::size(className))) == 0 ||
-      std::wcscmp(className, kCredentialDialogClass) != 0) {
-    return false;
-  }
-
-  DWORD processId = 0;
-  GetWindowThreadProcessId(window, &processId);
-  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
-  if (process == nullptr) {
-    return false;
-  }
-
-  wchar_t processPath[MAX_PATH]{};
-  DWORD processPathSize = static_cast<DWORD>(std::size(processPath));
-  const bool queried = QueryFullProcessImageNameW(
-      process, 0, processPath, &processPathSize) != FALSE;
-  CloseHandle(process);
-  if (!queried) {
-    return false;
-  }
-
-  const wchar_t* processName = std::wcsrchr(processPath, L'\\');
-  processName = processName == nullptr ? processPath : processName + 1;
-  return _wcsicmp(processName, kCredentialUiBrokerProcess) == 0;
-}
-
-BOOL CALLBACK collectCredentialUiWindows(HWND window, LPARAM context) {
-  if (isCredentialUiBrokerWindow(window)) {
-    reinterpret_cast<std::vector<HWND>*>(context)->push_back(window);
-  }
-  return TRUE;
-}
-
-std::vector<HWND> credentialUiWindows() {
-  std::vector<HWND> windows;
-  EnumWindows(collectCredentialUiWindows, reinterpret_cast<LPARAM>(&windows));
-  return windows;
-}
-
-class CredentialUiForegroundWatch {
+class WebAuthnPromptAnchor {
 public:
-  CredentialUiForegroundWatch() : m_existingWindows(credentialUiWindows()),
-      m_thread([this]() { watch(); }) {
+  explicit WebAuthnPromptAnchor(WId parentWindow)
+      : m_parent(reinterpret_cast<HWND>(parentWindow)) {
+    if (m_parent == nullptr || !IsWindow(m_parent)) {
+      m_parent = nullptr;
+      return;
+    }
+
+    RECT parentRect{};
+    const bool haveParentRect = GetWindowRect(m_parent, &parentRect) != FALSE;
+    const int x = haveParentRect ? parentRect.left + (parentRect.right - parentRect.left) / 2 : 0;
+    const int y = haveParentRect ? parentRect.top + (parentRect.bottom - parentRect.top) / 2 : 0;
+    m_anchor = CreateWindowExW(
+        WS_EX_TOOLWINDOW,
+        L"STATIC",
+        L"",
+        WS_POPUP,
+        x,
+        y,
+        1,
+        1,
+        m_parent,
+        nullptr,
+        GetModuleHandleW(nullptr),
+        nullptr);
+    if (m_anchor != nullptr) {
+      ShowWindow(m_anchor, SW_SHOWNORMAL);
+      SetForegroundWindow(m_anchor);
+    }
   }
 
-  ~CredentialUiForegroundWatch() {
-    m_stop.store(true, std::memory_order_relaxed);
-    if (m_thread.joinable()) {
-      m_thread.join();
+  ~WebAuthnPromptAnchor() {
+    if (m_anchor != nullptr) {
+      DestroyWindow(m_anchor);
     }
+  }
+
+  HWND window() const {
+    return m_anchor == nullptr ? m_parent : m_anchor;
   }
 
 private:
-  void watch() {
-    while (!m_stop.load(std::memory_order_relaxed)) {
-      for (HWND window : credentialUiWindows()) {
-        if (std::find(m_existingWindows.begin(), m_existingWindows.end(), window) ==
-                m_existingWindows.end() &&
-            SetForegroundWindow(window)) {
-          return;
-        }
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-  }
-
-  std::vector<HWND> m_existingWindows;
-  std::atomic<bool> m_stop{false};
-  std::thread m_thread;
+  HWND m_parent = nullptr;
+  HWND m_anchor = nullptr;
 };
-
-HWND prepareWebAuthnParent(WId parentWindow) {
-  HWND window = reinterpret_cast<HWND>(parentWindow);
-  if (window != nullptr && IsWindow(window)) {
-    // Do this synchronously immediately before the WebAuthn call. Qt's
-    // activateWindow() is asynchronous and can otherwise raise the wallet
-    // after Windows Security has already opened.
-    SetForegroundWindow(window);
-    SetFocus(window);
-  }
-  return window;
-}
 
 QByteArray randomBytes(int size, QString& error) {
   QByteArray bytes(size, Qt::Uninitialized);
@@ -237,11 +187,10 @@ bool WindowsWebAuthnPrf::enroll(WId parentWindow, const QByteArray& walletBindin
   options.dwAttestationConveyancePreference = WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_NONE;
   options.bEnablePrf = TRUE;
 
-  const HWND webAuthnParent = prepareWebAuthnParent(parentWindow);
-  CredentialUiForegroundWatch foregroundWatch;
+  WebAuthnPromptAnchor promptAnchor(parentWindow);
   PWEBAUTHN_CREDENTIAL_ATTESTATION attestation = nullptr;
   const HRESULT result = WebAuthNAuthenticatorMakeCredential(
-      webAuthnParent, &rp, &user, &parameters, &client,
+      promptAnchor.window(), &rp, &user, &parameters, &client,
       &options, &attestation);
   if (FAILED(result) || attestation == nullptr) {
     error = webAuthnError(result, QObject::tr("YubiKey enrollment"));
@@ -340,11 +289,10 @@ bool WindowsWebAuthnPrf::unlock(WId parentWindow, const QByteArray& credentialId
   options.dwUserVerificationRequirement = WEBAUTHN_USER_VERIFICATION_REQUIREMENT_REQUIRED;
   options.pHmacSecretSaltValues = &saltValues;
 
-  const HWND webAuthnParent = prepareWebAuthnParent(parentWindow);
-  CredentialUiForegroundWatch foregroundWatch;
+  WebAuthnPromptAnchor promptAnchor(parentWindow);
   PWEBAUTHN_ASSERTION assertion = nullptr;
   const HRESULT result = WebAuthNAuthenticatorGetAssertion(
-      webAuthnParent, kRpId, &client, &options, &assertion);
+      promptAnchor.window(), kRpId, &client, &options, &assertion);
   if (FAILED(result) || assertion == nullptr) {
     error = webAuthnError(result, QObject::tr("YubiKey authorization"));
     if (assertion != nullptr) {
