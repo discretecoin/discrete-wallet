@@ -8,11 +8,12 @@ details. The desktop still constructs and signs each operation.
 ## Security model
 
 Enabling protection converts the active wallet to a tracking-only wallet. Its
-spend seed is removed from both the saved wallet and the resident scanner. A
-companion `<wallet>.yubikey.json` file contains one independently encrypted copy
-of the seed for every enrolled security key. Each AES-256-GCM encryption key is
-derived from that credential's WebAuthn PRF result using HKDF-SHA-256. The
-sidecar is bound to the wallet's encoded PQ tracking keys.
+spend seed is removed from both the saved wallet and the resident scanner. The
+password-encrypted `.wallet` file embeds one independently YubiKey-encrypted
+copy of the seed for every enrolled security key. Each AES-256-GCM encryption
+key is derived from that credential's WebAuthn PRF result using HKDF-SHA-256.
+The embedded metadata is bound to the wallet's encoded PQ tracking keys. It
+contains no PIN, PRF secret, or plaintext seed.
 
 Windows asks the enrolled cross-platform FIDO2 authenticator for user
 verification and touch before each operation that needs the seed. The seed is
@@ -61,7 +62,7 @@ that file and its wallet password can spend without the YubiKey.
 An already enrolled key must authorize every addition. After that
 authorization succeeds, remove it and insert the different physical YubiKey
 that will become the backup. Windows Security creates a new credential and then
-verifies its PRF output before the sidecar is updated atomically. Those are two
+verifies its PRF output before the wallet file is updated. Those are two
 separate PIN/touch prompts on the new key; both are required during enrollment.
 
 The wallet stores a user label and a short hash fingerprint for selection. FIDO2
@@ -76,38 +77,47 @@ recovery design, not a multi-signature or threshold scheme. Adding more keys
 therefore improves availability but also means that theft of any enrolled key
 and its PIN is sufficient to authorize an operation on a compromised host.
 
-If an interrupted migration leaves a `.yubikey.json` sidecar next to a wallet
-that still contains its spend seed, the next launch displays a critical warning
-and does not claim protection. Preserve the pre-migration backup and resolve the
-orphan sidecar before retrying; never infer protection merely from the presence
-of the JSON file.
+Prototype wallets that still have a matching `.wallet.yubikey.json` sidecar are
+migrated automatically. The sidecar is retained until the new v3 `.wallet` save
+has completed and replaced the old file; only then is the matching sidecar
+deleted. If the sidecar is corrupt, belongs to another wallet, changes during
+migration, or the save fails, it is retained and the old two-file recovery path
+continues to work.
+
+If an interrupted old activation left a sidecar next to a full wallet that
+still contains its spend seed, the wallet does not claim protection. Preserve
+the pre-migration backup and resolve the orphan sidecar before retrying.
 
 ## Backup and recovery
 
-A protected backup consists of two files and neither is sufficient alone:
+A protected backup consists of one self-contained tracking-only `.wallet` file.
+The embedded metadata survives reset/rescan and cache-free manual or automatic
+backups. Copying or renaming that `.wallet` therefore cannot separate it from
+the YubiKey recovery envelopes.
 
-- the tracking-only `.wallet` file;
-- the matching `.wallet.yubikey.json` sidecar.
-
-The sidecar supports up to eight independently usable security keys. Losing one
+The wallet supports up to eight independently usable security keys. Losing one
 does not block spending while another enrolled key remains available. A lost
 key's entry cannot currently be removed through the GUI, so label keys clearly
 and retain the mnemonic or offline pre-migration full-wallet backup as the final
 recovery path. Recovery deliberately creates a normal full wallet; protection
 can then be enabled again with new keys.
 
-Version 2 of the sidecar stores the multi-key list. The wallet reads existing
-single-key version 1 sidecars and upgrades them atomically when a backup key is
-added. Older prototype builds cannot read a version 2 sidecar; they fail closed
-without modifying it.
+Protected wallets use wallet serialization version 3. It includes a
+compatibility guard because the old version 2 reader did not reject unknown
+versions: r11 and older therefore fail their key-integrity check before opening
+a v3 wallet and cannot silently strip its embedded metadata on save. Ordinary
+full and tracking wallets without protected-spend metadata remain version 2.
+
+Legacy sidecar versions 1 and 2 are accepted only for automatic migration.
 
 ## Tests
 
 The automated tests cover independent primary and backup encryption round
-trips, wrong-PRF and sidecar-tampering rejection, version 1 compatibility,
-version 2 persistence and duplicate-entry rejection, seed-to-tracking-key
-validation, and a wallet detach/save/reload cycle that proves the tracking
-scanner does not retain the spend seed.
+trips, embedded metadata serialization, wrong-PRF and tampering rejection,
+legacy sidecar compatibility, duplicate-entry rejection, seed-to-tracking-key
+validation, the v3 old-reader guard, and wallet detach/save/reload/reset cycles
+that prove both that the scanner does not retain the seed and that protected
+recovery metadata is never treated as disposable cache.
 
 On Windows, build and run `WebAuthnPrfSmoke` separately. It creates an isolated
 test credential, requests two PIN/touch authorizations, and succeeds only when

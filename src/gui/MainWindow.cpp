@@ -980,7 +980,7 @@ void MainWindow::enableYubiKeyProtection() {
       this,
       tr("YubiKey protected spending enabled"),
       tr("The spend seed has been removed from the active wallet and the protected wallet save has started.\n\n"
-         "Mandatory full-wallet backup:\n%1\n\nMove that backup offline after verifying your mnemonic recovery. Keep the .wallet and .yubikey.json files together when backing up the protected wallet.")
+         "Mandatory full-wallet backup:\n%1\n\nMove that backup offline after verifying your mnemonic recovery. The active protected wallet is now self-contained: back up its single .wallet file.")
           .arg(backupPath) +
       tr("\n\nOnly one physical YubiKey is enrolled right now. Use Wallet > Add backup YubiKey... and test that second key before treating protected mode as recoverable."));
 #endif
@@ -1039,7 +1039,7 @@ void MainWindow::addYubiKeyProtectionKey() {
         tr("Backup YubiKey added"),
         tr("The new key was enrolled and verified. This wallet now has %1 independently usable YubiKeys.\n\n"
            "Do not trust the backup blindly: close the wallet, remove the primary key, reopen it, and test a protected operation using only the backup key.\n\n"
-           "After adding this key the sidecar uses the multi-key format and older prototype builds cannot open it.")
+           "The new encrypted key entry is stored inside the .wallet file. Older prototype builds intentionally cannot open this protected-wallet format.")
             .arg(keyCount));
   });
 #endif

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QMutex>
 #include <QObject>
 #include <QTime>
@@ -32,6 +33,7 @@
 namespace WalletGui {
 
 class ITransfersContainer;
+struct YubiKeySeedMetadata;
 
 class WalletAdapter : public QObject, public CryptoNote::IWalletLegacyObserver {
   Q_OBJECT
@@ -152,6 +154,8 @@ private:
   uint32_t m_syncPeriod;
   struct PerfType { uint32_t height; QTime time; };
   std::vector<PerfType> m_perfData;
+  QString m_pendingYubiKeySidecarRemoval;
+  QByteArray m_pendingYubiKeySidecarData;
 
   boost::program_options::variables_map m_wrpcOptions;
 
@@ -162,6 +166,14 @@ private:
   void onWalletSendTransactionCompleted(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
 
   bool save(const QString& _file, bool _details, bool _cache);
+  bool loadYubiKeyMetadata(YubiKeySeedMetadata& _metadata,
+                           QString& _errorText) const;
+  bool storeEmbeddedYubiKeyMetadata(const YubiKeySeedMetadata& _metadata,
+                                    QString& _errorText,
+                                    QByteArray* _serialized = nullptr);
+  QByteArray embeddedYubiKeyMetadata() const;
+  void migrateLegacyYubiKeySidecar();
+  void removeMigratedYubiKeySidecar();
   void lock();
   void unlock();
   bool openFile(const QString& _file, bool _read_only);
@@ -178,7 +190,7 @@ private:
                                     const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                     quint64 _fee, QString* _errorText);
 
-  static void renameFile(const QString& _old_name, const QString& _new_name);
+  static bool renameFile(const QString& _old_name, const QString& _new_name);
   Q_SLOT void updateBlockStatusText();
   Q_SLOT void updateBlockStatusTextWithDelay();
 

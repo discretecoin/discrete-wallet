@@ -22,9 +22,10 @@ struct YubiKeySeedEnvelope {
   QByteArray tag;
 };
 
-// Non-secret metadata stored next to a tracking-only .wallet file. Version 2
+// Non-secret metadata embedded in a tracking-only .wallet file. Version 2
 // stores one envelope per enrolled security key and a common wallet binding.
-// load() also accepts the original single-key version 1 format.
+// The sidecar helpers remain only for migration from prototype builds and also
+// accept the original single-key version 1 format.
 struct YubiKeySeedMetadata {
   QList<YubiKeySeedEnvelope> keys;
   QByteArray walletBinding;
@@ -53,6 +54,14 @@ public:
                      CryptoPQ::SeedMaster& seedMaster,
                      QString& error);
 
+  static bool serialize(const YubiKeySeedMetadata& metadata,
+                        QByteArray& data,
+                        QString& error);
+  static bool deserialize(const QByteArray& data,
+                          YubiKeySeedMetadata& metadata,
+                          QString& error);
+
+  // Legacy prototype sidecar migration only.
   static bool save(const QString& walletPath,
                    const YubiKeySeedMetadata& metadata,
                    QString& error);

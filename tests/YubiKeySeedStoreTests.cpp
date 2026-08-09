@@ -129,6 +129,30 @@ int main(int argc, char** argv) {
   metadata.walletBinding = binding;
   metadata.keys = {primary, backup};
 
+  QByteArray embedded;
+  if (!require(YubiKeySeedStore::serialize(metadata, embedded, error),
+               qPrintable(error)) ||
+      !require(!embedded.isEmpty(), "embedded metadata serialization is empty")) {
+    return 1;
+  }
+  YubiKeySeedMetadata embeddedLoaded;
+  if (!require(YubiKeySeedStore::deserialize(
+          embedded, embeddedLoaded, error), qPrintable(error)) ||
+      !require(embeddedLoaded.walletBinding == metadata.walletBinding &&
+               embeddedLoaded.keys.size() == 2 &&
+               sameEnvelope(embeddedLoaded.keys.at(0), primary) &&
+               sameEnvelope(embeddedLoaded.keys.at(1), backup),
+               "embedded metadata round-trip mismatch")) {
+    return 1;
+  }
+  QByteArray tamperedEmbedded = embedded;
+  tamperedEmbedded[0] = '[';
+  if (!require(!YubiKeySeedStore::deserialize(
+          tamperedEmbedded, embeddedLoaded, error),
+          "tampered embedded metadata was accepted")) {
+    return 1;
+  }
+
   QTemporaryDir directory;
   if (!require(directory.isValid(), "temporary directory creation failed")) {
     return 1;

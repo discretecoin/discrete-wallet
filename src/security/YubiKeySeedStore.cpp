@@ -305,10 +305,11 @@ bool YubiKeySeedStore::unseal(const YubiKeySeedEnvelope& envelope,
   return true;
 }
 
-bool YubiKeySeedStore::save(const QString& walletPath,
-                            const YubiKeySeedMetadata& metadata,
-                            QString& error) {
+bool YubiKeySeedStore::serialize(const YubiKeySeedMetadata& metadata,
+                                 QByteArray& data,
+                                 QString& error) {
   error.clear();
+  data.clear();
   if (!validateMetadata(metadata, error)) {
     return false;
   }
@@ -330,28 +331,18 @@ bool YubiKeySeedStore::save(const QString& walletPath,
   }
   object.insert(QStringLiteral("keys"), keys);
 
-  QSaveFile file(sidecarPath(walletPath));
-  if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(object).toJson(QJsonDocument::Indented)) < 0 ||
-      !file.commit()) {
-    error = QObject::tr("Could not atomically write the YubiKey metadata file: %1").arg(file.errorString());
-    return false;
-  }
-  error.clear();
-  return true;
+  data = QJsonDocument(object).toJson(QJsonDocument::Compact);
+  return !data.isEmpty();
 }
 
-bool YubiKeySeedStore::load(const QString& walletPath,
-                            YubiKeySeedMetadata& metadata,
-                            QString& error) {
-  QFile file(sidecarPath(walletPath));
-  if (!file.open(QIODevice::ReadOnly)) {
-    error = QObject::tr("Could not open the YubiKey metadata file: %1").arg(file.errorString());
-    return false;
-  }
+bool YubiKeySeedStore::deserialize(const QByteArray& data,
+                                   YubiKeySeedMetadata& metadata,
+                                   QString& error) {
+  error.clear();
   QJsonParseError parseError;
-  const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+  const QJsonDocument document = QJsonDocument::fromJson(data, &parseError);
   if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-    error = QObject::tr("The YubiKey metadata file is not valid JSON.");
+    error = QObject::tr("The YubiKey metadata is not valid JSON.");
     return false;
   }
   const QJsonObject object = document.object();
@@ -402,8 +393,37 @@ bool YubiKeySeedStore::load(const QString& walletPath,
     return false;
   }
   metadata = parsed;
+  return true;
+}
+
+bool YubiKeySeedStore::save(const QString& walletPath,
+                            const YubiKeySeedMetadata& metadata,
+                            QString& error) {
+  QByteArray compact;
+  if (!serialize(metadata, compact, error)) {
+    return false;
+  }
+  const QJsonDocument document = QJsonDocument::fromJson(compact);
+
+  QSaveFile file(sidecarPath(walletPath));
+  if (!file.open(QIODevice::WriteOnly) || file.write(document.toJson(QJsonDocument::Indented)) < 0 ||
+      !file.commit()) {
+    error = QObject::tr("Could not atomically write the YubiKey metadata file: %1").arg(file.errorString());
+    return false;
+  }
   error.clear();
   return true;
+}
+
+bool YubiKeySeedStore::load(const QString& walletPath,
+                            YubiKeySeedMetadata& metadata,
+                            QString& error) {
+  QFile file(sidecarPath(walletPath));
+  if (!file.open(QIODevice::ReadOnly)) {
+    error = QObject::tr("Could not open the YubiKey metadata file: %1").arg(file.errorString());
+    return false;
+  }
+  return deserialize(file.readAll(), metadata, error);
 }
 
 }  // namespace WalletGui
