@@ -25,6 +25,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 
+#include <utility>
+
 #include "MainWindow.h"
 
 #include "Common/Base58.h"
@@ -782,14 +784,32 @@ void MainWindow::showMnemonicSeed() {
         return;
       }
 
-      const QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(QString(), winId());
+      QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(QString(), winId());
       if (mnemonicSeed.isEmpty()) {
         return;
       }
 
-      MnemonicSeedDialog dlg(this);
-      dlg.setMnemonicSeed(mnemonicSeed);
-      dlg.exec();
+      // Return to Qt's normal event loop before creating another native window.
+      // Windows Security and the temporary WebAuthn owner can then finish their
+      // teardown, instead of the mnemonic dialog exposing an unpainted surface.
+      QTimer::singleShot(0, this,
+          [this, mnemonicSeed = std::move(mnemonicSeed)]() mutable {
+        if (!WalletAdapter::instance().isOpen() ||
+            !WalletAdapter::instance().isYubiKeyProtected()) {
+          mnemonicSeed.fill(QChar(u'\0'));
+          return;
+        }
+
+        auto* dlg = new MnemonicSeedDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setProtectedMnemonicSeed(mnemonicSeed);
+        mnemonicSeed.fill(QChar(u'\0'));
+        mnemonicSeed.clear();
+
+        // open() is window-modal but does not start a nested event loop. The
+        // regular GUI loop remains free to perform the dialog's first paint.
+        dlg->open();
+      });
     });
     return;
   }

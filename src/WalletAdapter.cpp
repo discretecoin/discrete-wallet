@@ -342,6 +342,7 @@ bool WalletAdapter::enableYubiKeyProtection(WId _parentWindow, QString& _backupP
 bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
                                       CryptoPQ::SeedMaster& _seedMaster,
                                       QString& _errorText) const {
+  const auto totalStarted = std::chrono::steady_clock::now();
   _errorText.clear();
   if (!isYubiKeyProtected()) {
     _errorText = tr("This wallet is not in YubiKey protected-spending mode.");
@@ -370,15 +371,34 @@ bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
   }
 
   QByteArray prfSecret;
-  if (!WindowsWebAuthnPrf::unlock(_parentWindow, metadata.credentialId,
-                                  metadata.prfSalt, prfSecret, _errorText)) {
+  const auto webAuthnStarted = std::chrono::steady_clock::now();
+  const bool authorized = WindowsWebAuthnPrf::unlock(
+      _parentWindow, metadata.credentialId, metadata.prfSalt, prfSecret, _errorText);
+  const auto webAuthnFinished = std::chrono::steady_clock::now();
+  if (!authorized) {
     return false;
   }
   Tools::SecretLock scrubPrf(prfSecret.data(), prfSecret.size());
+  const auto unsealStarted = std::chrono::steady_clock::now();
   if (!YubiKeySeedStore::unseal(metadata, prfSecret, _seedMaster, _errorText)) {
     return false;
   }
-  if (!CryptoNote::pqTrackingKeysMatchSeed(tracking, _seedMaster)) {
+  const auto unsealFinished = std::chrono::steady_clock::now();
+  const bool seedMatches = CryptoNote::pqTrackingKeysMatchSeed(tracking, _seedMaster);
+  const auto verificationFinished = std::chrono::steady_clock::now();
+
+  const auto milliseconds = [](auto from, auto to) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(to - from).count();
+  };
+  m_logger(Logging::INFO)
+      << "YubiKey unlock timing: precheck="
+      << milliseconds(totalStarted, webAuthnStarted)
+      << "ms, webauthn=" << milliseconds(webAuthnStarted, webAuthnFinished)
+      << "ms, decrypt=" << milliseconds(unsealStarted, unsealFinished)
+      << "ms, seed-check=" << milliseconds(unsealFinished, verificationFinished)
+      << "ms, total=" << milliseconds(totalStarted, verificationFinished) << "ms";
+
+  if (!seedMatches) {
     sodium_memzero(_seedMaster.data(), _seedMaster.size());
     _errorText = tr("The decrypted seed does not match the open wallet.");
     return false;
