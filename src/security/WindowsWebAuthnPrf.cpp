@@ -3,8 +3,11 @@
 
 #include "WindowsWebAuthnPrf.h"
 
+#include <QCoreApplication>
+#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 
 #include <cwchar>
 
@@ -117,6 +120,15 @@ bool boolExtensionEnabled(const WEBAUTHN_EXTENSIONS& extensions,
   return false;
 }
 
+void yieldToQtEventLoop() {
+  if (QCoreApplication::instance() == nullptr) {
+    return;
+  }
+  QEventLoop eventLoop;
+  QTimer::singleShot(0, &eventLoop, &QEventLoop::quit);
+  eventLoop.exec(QEventLoop::ExcludeUserInputEvents);
+}
+
 #endif
 
 }  // namespace
@@ -187,11 +199,16 @@ bool WindowsWebAuthnPrf::enroll(WId parentWindow, const QByteArray& walletBindin
   options.dwAttestationConveyancePreference = WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_NONE;
   options.bEnablePrf = TRUE;
 
-  WebAuthnPromptAnchor promptAnchor(parentWindow);
   PWEBAUTHN_CREDENTIAL_ATTESTATION attestation = nullptr;
-  const HRESULT result = WebAuthNAuthenticatorMakeCredential(
-      promptAnchor.window(), &rp, &user, &parameters, &client,
-      &options, &attestation);
+  HRESULT result = E_FAIL;
+  {
+    // This anchor owns only the MakeCredential prompt. It must be destroyed
+    // before the verification assertion creates its own native owner.
+    WebAuthnPromptAnchor promptAnchor(parentWindow);
+    result = WebAuthNAuthenticatorMakeCredential(
+        promptAnchor.window(), &rp, &user, &parameters, &client,
+        &options, &attestation);
+  }
   if (FAILED(result) || attestation == nullptr) {
     error = webAuthnError(result, QObject::tr("YubiKey enrollment"));
     if (attestation != nullptr) {
@@ -229,6 +246,9 @@ bool WindowsWebAuthnPrf::enroll(WId parentWindow, const QByteArray& walletBindin
 
   QByteArray salt = randomBytes(kSecretSize, error);
   QByteArray secret;
+  // Give Windows Security and Qt one complete event-loop turn to tear down the
+  // MakeCredential window before GetAssertion opens the verification prompt.
+  yieldToQtEventLoop();
   if (salt.isEmpty() || !unlock(parentWindow, credential, salt, secret, error)) {
     return false;
   }
