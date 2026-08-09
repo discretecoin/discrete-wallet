@@ -24,6 +24,10 @@ MnemonicSeedDialog::MnemonicSeedDialog(QWidget* _parent) : QDialog(_parent), m_u
 MnemonicSeedDialog::~MnemonicSeedDialog() {
 }
 
+void MnemonicSeedDialog::setMnemonicSeed(const QString& _mnemonicSeed) {
+  m_ui->m_mnemonicSeedEdit->setText(_mnemonicSeed);
+}
+
 void MnemonicSeedDialog::walletOpened() {
   languageChanged();
 }

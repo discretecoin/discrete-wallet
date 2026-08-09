@@ -15,6 +15,7 @@ class MnemonicSeedDialog : public QDialog {
 
 public:
     MnemonicSeedDialog(QWidget * _parent);
+    void setMnemonicSeed(const QString& _mnemonicSeed);
     void walletOpened();
     void walletClosed();
     ~MnemonicSeedDialog();
