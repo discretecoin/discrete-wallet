@@ -103,7 +103,10 @@ public:
   bool isOpen() const;
   bool hasYubiKeyMetadata() const;
   bool isYubiKeyProtected() const;
+  int yubiKeyCount() const;
   bool enableYubiKeyProtection(WId _parentWindow, QString& _backupPath, QString& _errorText);
+  bool addYubiKeyProtectionKey(WId _parentWindow, const QString& _label,
+                              QString& _errorText);
   bool unlockYubiKeySeed(WId _parentWindow, CryptoPQ::SeedMaster& _seedMaster,
                         QString& _errorText) const;
 

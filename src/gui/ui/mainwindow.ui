@@ -246,6 +246,7 @@
     <addaction name="m_encryptWalletAction"/>
     <addaction name="m_changePasswordAction"/>
     <addaction name="m_yubiKeyProtectionAction"/>
+    <addaction name="m_addYubiKeyAction"/>
     <addaction name="separator"/>
     <addaction name="m_showMnemonicSeedAction"/>
     <addaction name="m_showPrivateKey"/>
@@ -378,6 +379,17 @@
    </property>
    <property name="toolTip">
     <string>Move spend authority out of the wallet file and require a FIDO2 security key for each spend</string>
+   </property>
+  </action>
+  <action name="m_addYubiKeyAction">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Add backup YubiKey...</string>
+   </property>
+   <property name="toolTip">
+    <string>Enroll another independently usable FIDO2 security key for this protected wallet</string>
    </property>
   </action>
   <action name="m_aboutCryptonoteAction">

@@ -9,11 +9,14 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QGridLayout>
 #include <QTextEdit>
 #include <QDateTime>
+#include <QEventLoop>
 #include <QLocale>
+#include <QStringList>
 #include <QVector>
 #include <QDebug>
 
@@ -261,6 +264,13 @@ bool WalletAdapter::isYubiKeyProtected() const {
          hasYubiKeyMetadata();
 }
 
+int WalletAdapter::yubiKeyCount() const {
+  YubiKeySeedMetadata metadata;
+  QString error;
+  return YubiKeySeedStore::load(Settings::instance().getWalletFile(), metadata, error)
+      ? metadata.keys.size() : 0;
+}
+
 bool WalletAdapter::enableYubiKeyProtection(WId _parentWindow, QString& _backupPath,
                                             QString& _errorText) {
   _backupPath.clear();
@@ -304,11 +314,16 @@ bool WalletAdapter::enableYubiKeyProtection(WId _parentWindow, QString& _backupP
   }
   Tools::SecretLock scrubPrf(enrollment.prfSecret.data(), enrollment.prfSecret.size());
 
-  YubiKeySeedMetadata metadata;
-  if (!YubiKeySeedStore::seal(seedMaster, enrollment.credentialId, enrollment.prfSalt,
-                              enrollment.prfSecret, binding, metadata, _errorText)) {
+  YubiKeySeedEnvelope primaryEnvelope;
+  if (!YubiKeySeedStore::seal(seedMaster, tr("Primary YubiKey"),
+                              enrollment.credentialId, enrollment.prfSalt,
+                              enrollment.prfSecret, binding, primaryEnvelope,
+                              _errorText)) {
     return false;
   }
+  YubiKeySeedMetadata metadata;
+  metadata.walletBinding = binding;
+  metadata.keys.append(primaryEnvelope);
 
   const QString walletPath = Settings::instance().getWalletFile();
   const QFileInfo walletInfo(walletPath);
@@ -337,6 +352,99 @@ bool WalletAdapter::enableYubiKeyProtection(WId _parentWindow, QString& _backupP
     return false;
   }
   return true;
+}
+
+bool WalletAdapter::addYubiKeyProtectionKey(WId _parentWindow,
+                                             const QString& _label,
+                                             QString& _errorText) {
+  _errorText.clear();
+  if (!isYubiKeyProtected()) {
+    _errorText = tr("This wallet is not in YubiKey protected-spending mode.");
+    return false;
+  }
+
+  YubiKeySeedMetadata metadata;
+  const QString walletPath = Settings::instance().getWalletFile();
+  if (!YubiKeySeedStore::load(walletPath, metadata, _errorText)) {
+    return false;
+  }
+  const QString label = _label.trimmed();
+  if (label.isEmpty() || label.size() > 64) {
+    _errorText = tr("The YubiKey label must contain between 1 and 64 characters.");
+    return false;
+  }
+  for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+    if (envelope.label.compare(label, Qt::CaseInsensitive) == 0) {
+      _errorText = tr("Another enrolled YubiKey already uses that label.");
+      return false;
+    }
+  }
+  if (metadata.keys.size() >= YubiKeySeedStore::MAX_KEY_COUNT) {
+    _errorText = tr("This wallet already has the maximum of %1 enrolled YubiKeys.")
+        .arg(YubiKeySeedStore::MAX_KEY_COUNT);
+    return false;
+  }
+
+  CryptoPQ::SeedMaster seedMaster{};
+  Tools::SecretLock scrubSeed(seedMaster.data(), seedMaster.size());
+  if (!unlockYubiKeySeed(_parentWindow, seedMaster, _errorText)) {
+    return false;
+  }
+
+  QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow()
+                                       : QWidget::find(_parentWindow);
+  // Let Windows Security and its temporary native owner finish closing before
+  // showing the key-switch instruction.
+  QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  if (!isYubiKeyProtected()) {
+    _errorText = tr("The protected wallet was closed before the backup key could be enrolled.");
+    return false;
+  }
+  QMessageBox switchPrompt(
+      QMessageBox::Warning,
+      tr("Insert a different backup YubiKey"),
+      tr("The enrolled key has authorized this change. Remove it now and insert "
+         "the different physical YubiKey that will serve as the backup.\n\n"
+         "The wallet cannot detect whether two credentials were created on the "
+         "same physical key. Using the same key again does not create a backup.\n\n"
+         "Windows Security will ask for the backup key twice: first to create "
+         "its credential, then to verify the PRF secret. Keep the backup key inserted."),
+      QMessageBox::NoButton,
+      parent);
+  QPushButton* enrollButton = switchPrompt.addButton(
+      tr("Enroll backup key"), QMessageBox::AcceptRole);
+  switchPrompt.addButton(QMessageBox::Cancel);
+  switchPrompt.setDefaultButton(QMessageBox::Cancel);
+  switchPrompt.exec();
+  if (switchPrompt.clickedButton() != enrollButton) {
+    _errorText.clear();
+    return false;
+  }
+
+  WindowsWebAuthnPrf::Enrollment enrollment;
+  if (!WindowsWebAuthnPrf::enroll(
+          _parentWindow, metadata.walletBinding, enrollment, _errorText)) {
+    return false;
+  }
+  Tools::SecretLock scrubPrf(
+      enrollment.prfSecret.data(), enrollment.prfSecret.size());
+
+  for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+    if (envelope.credentialId == enrollment.credentialId) {
+      _errorText = tr("That WebAuthn credential is already enrolled for this wallet.");
+      return false;
+    }
+  }
+
+  YubiKeySeedEnvelope backupEnvelope;
+  if (!YubiKeySeedStore::seal(seedMaster, label, enrollment.credentialId,
+                              enrollment.prfSalt, enrollment.prfSecret,
+                              metadata.walletBinding, backupEnvelope,
+                              _errorText)) {
+    return false;
+  }
+  metadata.keys.append(backupEnvelope);
+  return YubiKeySeedStore::save(walletPath, metadata, _errorText);
 }
 
 bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
@@ -370,17 +478,47 @@ bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
     return false;
   }
 
+  QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow()
+                                       : QWidget::find(_parentWindow);
+  int selectedIndex = 0;
+  const auto selectionStarted = std::chrono::steady_clock::now();
+  if (metadata.keys.size() > 1) {
+    QStringList choices;
+    choices.reserve(metadata.keys.size());
+    for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+      choices.append(tr("%1 [%2]").arg(
+          envelope.label, YubiKeySeedStore::keyFingerprint(envelope)));
+    }
+    bool accepted = false;
+    const QString selected = QInputDialog::getItem(
+        parent, tr("Select YubiKey"), tr("Security key:"), choices,
+        0, false, &accepted);
+    if (!accepted) {
+      _errorText = tr("YubiKey selection was cancelled.");
+      return false;
+    }
+    selectedIndex = choices.indexOf(selected);
+    if (selectedIndex < 0 || selectedIndex >= metadata.keys.size()) {
+      _errorText = tr("The selected YubiKey entry is invalid.");
+      return false;
+    }
+  }
+  const auto selectionFinished = std::chrono::steady_clock::now();
+  const YubiKeySeedEnvelope& selectedKey = metadata.keys.at(selectedIndex);
+
   QByteArray prfSecret;
   const auto webAuthnStarted = std::chrono::steady_clock::now();
   const bool authorized = WindowsWebAuthnPrf::unlock(
-      _parentWindow, metadata.credentialId, metadata.prfSalt, prfSecret, _errorText);
+      _parentWindow, selectedKey.credentialId, selectedKey.prfSalt,
+      prfSecret, _errorText);
   const auto webAuthnFinished = std::chrono::steady_clock::now();
   if (!authorized) {
     return false;
   }
   Tools::SecretLock scrubPrf(prfSecret.data(), prfSecret.size());
   const auto unsealStarted = std::chrono::steady_clock::now();
-  if (!YubiKeySeedStore::unseal(metadata, prfSecret, _seedMaster, _errorText)) {
+  if (!YubiKeySeedStore::unseal(selectedKey, metadata.walletBinding,
+                                prfSecret, _seedMaster, _errorText)) {
     return false;
   }
   const auto unsealFinished = std::chrono::steady_clock::now();
@@ -392,7 +530,8 @@ bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
   };
   m_logger(Logging::INFO)
       << "YubiKey unlock timing: precheck="
-      << milliseconds(totalStarted, webAuthnStarted)
+      << milliseconds(totalStarted, selectionStarted)
+      << "ms, selection=" << milliseconds(selectionStarted, selectionFinished)
       << "ms, webauthn=" << milliseconds(webAuthnStarted, webAuthnFinished)
       << "ms, decrypt=" << milliseconds(unsealStarted, unsealFinished)
       << "ms, seed-check=" << milliseconds(unsealFinished, verificationFinished)

@@ -4,38 +4,51 @@
 #pragma once
 
 #include <QByteArray>
+#include <QList>
 #include <QString>
 
 #include "crypto_pq/PqSeed.h"
 
 namespace WalletGui {
 
-// Non-secret metadata stored next to a tracking-only .wallet file. The seed is
-// encrypted with AES-256-GCM under a key derived from a credential-scoped
-// WebAuthn PRF (FIDO2 hmac-secret) result.
-struct YubiKeySeedMetadata {
+// One independently unlockable encrypted copy of the same wallet seed. Each
+// entry is bound to a separate credential-scoped WebAuthn PRF result.
+struct YubiKeySeedEnvelope {
+  QString label;
   QByteArray credentialId;
   QByteArray prfSalt;
   QByteArray nonce;
   QByteArray ciphertext;
   QByteArray tag;
+};
+
+// Non-secret metadata stored next to a tracking-only .wallet file. Version 2
+// stores one envelope per enrolled security key and a common wallet binding.
+// load() also accepts the original single-key version 1 format.
+struct YubiKeySeedMetadata {
+  QList<YubiKeySeedEnvelope> keys;
   QByteArray walletBinding;
 };
 
 class YubiKeySeedStore {
 public:
+  static constexpr int MAX_KEY_COUNT = 8;
+
   static QString sidecarPath(const QString& walletPath);
   static bool exists(const QString& walletPath);
 
   static QByteArray walletBinding(const QByteArray& encodedTrackingKey);
+  static QString keyFingerprint(const YubiKeySeedEnvelope& envelope);
   static bool seal(const CryptoPQ::SeedMaster& seedMaster,
+                   const QString& label,
                    const QByteArray& credentialId,
                    const QByteArray& prfSalt,
                    const QByteArray& prfSecret,
                    const QByteArray& walletBinding,
-                   YubiKeySeedMetadata& metadata,
+                   YubiKeySeedEnvelope& envelope,
                    QString& error);
-  static bool unseal(const YubiKeySeedMetadata& metadata,
+  static bool unseal(const YubiKeySeedEnvelope& envelope,
+                     const QByteArray& walletBinding,
                      const QByteArray& prfSecret,
                      CryptoPQ::SeedMaster& seedMaster,
                      QString& error);

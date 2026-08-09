@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QSystemTrayIcon>
 #include <QDesktopServices>
@@ -132,6 +133,8 @@ void MainWindow::connectToSignals() {
   connect(m_ui->m_exitAction, &QAction::triggered, qApp, &QApplication::quit);
   connect(m_ui->m_yubiKeyProtectionAction, &QAction::triggered,
           this, &MainWindow::enableYubiKeyProtection);
+  connect(m_ui->m_addYubiKeyAction, &QAction::triggered,
+          this, &MainWindow::addYubiKeyProtectionKey);
   connect(m_ui->m_sendFrame, &SendFrame::uriOpenSignal, this, &MainWindow::onUriOpenSignal, Qt::QueuedConnection);
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::createWalletClickedSignal, this, &MainWindow::createWallet, Qt::QueuedConnection);
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::openWalletClickedSignal, this, &MainWindow::openWallet, Qt::QueuedConnection);
@@ -967,16 +970,78 @@ void MainWindow::enableYubiKeyProtection() {
   Settings::instance().setTrackingMode(false);
   m_ui->m_yubiKeyProtectionAction->setEnabled(false);
   m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
+  m_ui->m_addYubiKeyAction->setEnabled(true);
   m_ui->m_miningAction->setEnabled(false);
   m_trackingModeIconLabel->show();
-  m_trackingModeIconLabel->setToolTip(tr("YubiKey protected spending. The wallet file contains no spend seed."));
+  m_trackingModeIconLabel->setToolTip(
+      tr("YubiKey protected spending. One enrolled key; add a backup YubiKey."));
   m_ui->m_showMnemonicSeedAction->setEnabled(true);
   QMessageBox::information(
       this,
       tr("YubiKey protected spending enabled"),
       tr("The spend seed has been removed from the active wallet and the protected wallet save has started.\n\n"
          "Mandatory full-wallet backup:\n%1\n\nMove that backup offline after verifying your mnemonic recovery. Keep the .wallet and .yubikey.json files together when backing up the protected wallet.")
-          .arg(backupPath));
+          .arg(backupPath) +
+      tr("\n\nOnly one physical YubiKey is enrolled right now. Use Wallet > Add backup YubiKey... and test that second key before treating protected mode as recoverable."));
+#endif
+}
+
+void MainWindow::addYubiKeyProtectionKey() {
+#ifndef Q_OS_WIN
+  QMessageBox::critical(this, tr("Add backup YubiKey"),
+      tr("This feature is currently available only on Windows."));
+  return;
+#else
+  if (!WalletAdapter::instance().isYubiKeyProtected()) {
+    QMessageBox::critical(this, tr("Add backup YubiKey"),
+        tr("Open a YubiKey-protected wallet first."));
+    return;
+  }
+  if (!confirmWithPassword()) {
+    return;
+  }
+
+  const int nextNumber = WalletAdapter::instance().yubiKeyCount() + 1;
+  bool accepted = false;
+  QString label = QInputDialog::getText(
+      this,
+      tr("Add backup YubiKey"),
+      tr("Label for the new physical key:"),
+      QLineEdit::Normal,
+      tr("Backup YubiKey %1").arg(nextNumber),
+      &accepted).trimmed();
+  if (!accepted) {
+    return;
+  }
+  if (label.isEmpty() || label.size() > 64) {
+    QMessageBox::critical(this, tr("Add backup YubiKey"),
+        tr("The label must contain between 1 and 64 characters."));
+    return;
+  }
+
+  // Let the password and label dialogs fully close before the first WebAuthn
+  // request, preserving the tested Windows Security window ordering.
+  QTimer::singleShot(0, this, [this, label]() {
+    QString error;
+    if (!WalletAdapter::instance().addYubiKeyProtectionKey(winId(), label, error)) {
+      if (!error.isEmpty()) {
+        QMessageBox::critical(this, tr("Failed to add backup YubiKey"), error);
+      }
+      return;
+    }
+
+    const int keyCount = WalletAdapter::instance().yubiKeyCount();
+    m_trackingModeIconLabel->setToolTip(
+        tr("YubiKey protected spending. %1 independently usable keys enrolled.")
+            .arg(keyCount));
+    QMessageBox::information(
+        this,
+        tr("Backup YubiKey added"),
+        tr("The new key was enrolled and verified. This wallet now has %1 independently usable YubiKeys.\n\n"
+           "Do not trust the backup blindly: close the wallet, remove the primary key, reopen it, and test a protected operation using only the backup key.\n\n"
+           "After adding this key the sidecar uses the multi-key format and older prototype builds cannot open it.")
+            .arg(keyCount));
+  });
 #endif
 }
 
@@ -1197,6 +1262,8 @@ void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
 void MainWindow::walletOpened(bool _error, const QString& _error_text) {
   if (!_error) {
     const bool yubiKeyProtected = WalletAdapter::instance().isYubiKeyProtected();
+    const int yubiKeyCount = yubiKeyProtected
+        ? WalletAdapter::instance().yubiKeyCount() : 0;
     const bool incompleteYubiKeyMigration =
         WalletAdapter::instance().hasYubiKeyMetadata() &&
         !WalletAdapter::instance().isTrackingWallet();
@@ -1218,6 +1285,8 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     m_ui->m_yubiKeyProtectionAction->setEnabled(
         !WalletAdapter::instance().isTrackingWallet() &&
         !yubiKeyProtected && !incompleteYubiKeyMigration);
+    m_ui->m_addYubiKeyAction->setEnabled(
+        yubiKeyProtected && yubiKeyCount > 0);
 #endif
     m_ui->m_yubiKeyProtectionAction->setText(
         yubiKeyProtected
@@ -1235,7 +1304,10 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
       m_ui->m_miningAction->setEnabled(false);
       m_trackingModeIconLabel->show();
       m_trackingModeIconLabel->setToolTip(
-          tr("YubiKey protected spending. The wallet file contains no spend seed."));
+          yubiKeyCount == 1
+              ? tr("YubiKey protected spending. One enrolled key; add a backup YubiKey.")
+              : tr("YubiKey protected spending. %1 independently usable keys enrolled.")
+                    .arg(yubiKeyCount));
     } else if (incompleteYubiKeyMigration) {
       QMessageBox::critical(
           this,
@@ -1277,6 +1349,7 @@ void MainWindow::walletClosed() {
   m_ui->m_encryptWalletAction->setEnabled(false);
   m_ui->m_changePasswordAction->setEnabled(false);
   m_ui->m_yubiKeyProtectionAction->setEnabled(false);
+  m_ui->m_addYubiKeyAction->setEnabled(false);
   m_ui->m_closeWalletAction->setEnabled(false);
   m_ui->m_openUriAction->setEnabled(false);
   m_ui->m_exportTrackingKeyAction->setEnabled(false);
