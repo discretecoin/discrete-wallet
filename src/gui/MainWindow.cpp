@@ -777,7 +777,6 @@ void MainWindow::showMnemonicSeed() {
   }
 
   MnemonicSeedDialog dlg(this);
-  dlg.walletOpened();
   dlg.exec();
 }
 
