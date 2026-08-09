@@ -1260,14 +1260,15 @@ bool WalletAdapter::isTrackingWallet() const {
   return false;
 }
 
-QString WalletAdapter::getMnemonicSeed(QString _language) const {
+QString WalletAdapter::getMnemonicSeed(QString _language, WId _parentWindow) const {
   Q_UNUSED(_language);
   if (isYubiKeyProtected()) {
     CryptoPQ::SeedMaster seed{};
     Tools::SecretLock scrub(seed.data(), seed.size());
     QString error;
-    QWidget* parent = QApplication::activeWindow();
-    if (!unlockYubiKeySeed(parent == nullptr ? 0 : parent->winId(), seed, error)) {
+    QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow() : QWidget::find(_parentWindow);
+    const WId parentWindow = _parentWindow != 0 ? _parentWindow : (parent == nullptr ? 0 : parent->winId());
+    if (!unlockYubiKeySeed(parentWindow, seed, error)) {
       QMessageBox::critical(parent, tr("Failed to reveal spend seed"), error, QMessageBox::Ok);
       return QString();
     }

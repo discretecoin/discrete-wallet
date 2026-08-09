@@ -777,6 +777,9 @@ void MainWindow::showMnemonicSeed() {
   }
 
   MnemonicSeedDialog dlg(this);
+  // Start WebAuthn only after exec() has made this dialog visible and modal.
+  // Windows can then keep its security UI in front of the correct owner.
+  QTimer::singleShot(0, &dlg, &MnemonicSeedDialog::walletOpened);
   dlg.exec();
 }
 

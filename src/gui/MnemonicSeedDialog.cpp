@@ -19,9 +19,6 @@ MnemonicSeedDialog::MnemonicSeedDialog(QWidget* _parent) : QDialog(_parent), m_u
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &MnemonicSeedDialog::walletClosed, Qt::QueuedConnection);
   connect(m_ui->m_languageCombo, &QComboBox::currentTextChanged, this, &MnemonicSeedDialog::languageChanged);
   initLanguages();
-  if (WalletAdapter::instance().isOpen()) {
-    languageChanged();
-  }
 }
 
 MnemonicSeedDialog::~MnemonicSeedDialog() {
@@ -46,7 +43,7 @@ void MnemonicSeedDialog::languageChanged() {
     return;
   }
 
-  QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(languageName);
+  QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(languageName, winId());
   m_ui->m_mnemonicSeedEdit->setText(mnemonicSeed);
 }
 

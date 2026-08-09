@@ -128,7 +128,7 @@ public:
   void transactionUpdated(CryptoNote::TransactionId _transaction_id) Q_DECL_OVERRIDE;
 
   bool isTrackingWallet() const;
-  QString getMnemonicSeed(QString _language) const;
+  QString getMnemonicSeed(QString _language, WId _parentWindow = 0) const;
   CryptoNote::AccountKeys getKeysFromMnemonicSeed(QString& _seed) const;
   bool tryOpen(const QString& _password);
 
