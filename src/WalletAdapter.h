@@ -11,6 +11,7 @@
 #include <QTime>
 #include <QTimer>
 #include <QPushButton>
+#include <QtGui/qwindowdefs.h>
 
 #include <list>
 #include <vector>
@@ -71,8 +72,14 @@ public:
   std::vector<CryptoNote::TransactionSpentOutputInformation> getSpentOutputs();
 
   void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee);
+  void sendTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
+                               const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                               quint64 _fee);
   QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                 quint64 _fee, QString* _errorText = nullptr);
+  QString prepareRawTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
+                                        const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                                        quint64 _fee, QString* _errorText = nullptr);
 
   enum class AccountRegistrationMode {
     Free,
@@ -94,11 +101,17 @@ public:
   bool getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const;
 
   bool isOpen() const;
+  bool hasYubiKeyMetadata() const;
+  bool isYubiKeyProtected() const;
+  bool enableYubiKeyProtection(WId _parentWindow, QString& _backupPath, QString& _errorText);
+  bool unlockYubiKeySeed(WId _parentWindow, CryptoPQ::SeedMaster& _seedMaster,
+                        QString& _errorText) const;
 
   bool changePassword(const QString& _old_pass, const QString& _new_pass);
   void setWalletFile(const QString& _path);
 
   QString signMessage(const QString &data);
+  QString getSpendSeedHex() const;
   // _destination accepts either a raw bech32m PQ address or an account number
   // (H-I-A-C / H-I-A-T-C); it is resolved to a spend public key the same way the
   // send path resolves a destination (see PqRecipient.h).
@@ -155,6 +168,12 @@ private:
   void runWalletRpc();
   void stopWalletRpc();
   void doRegisterAccountNumber(AccountRegistrationMode _mode);
+  void sendTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
+                           const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                           quint64 _fee);
+  QString prepareRawTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
+                                    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                                    quint64 _fee, QString* _errorText);
 
   static void renameFile(const QString& _old_name, const QString& _new_name);
   Q_SLOT void updateBlockStatusText();

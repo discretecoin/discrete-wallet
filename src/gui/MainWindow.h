@@ -120,6 +120,7 @@ private:
   Q_SLOT void backupWallet();
   Q_SLOT void resetWallet();
   Q_SLOT void encryptWallet();
+  Q_SLOT void enableYubiKeyProtection();
   Q_SLOT void aboutQt();
   Q_SLOT void about();
   Q_SLOT void setStartOnLogin(bool _on);

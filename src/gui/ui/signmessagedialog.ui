@@ -129,6 +129,16 @@
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="m_signButton">
+           <property name="text">
+            <string>Sign</string>
+           </property>
+           <property name="toolTip">
+            <string>Authorize one signature operation</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLabel" name="label_3">
            <property name="text">
             <string>Signature</string>
@@ -301,8 +311,8 @@
    </hints>
   </connection>
   <connection>
-   <sender>m_messageEdit</sender>
-   <signal>textChanged()</signal>
+   <sender>m_signButton</sender>
+   <signal>clicked()</signal>
    <receiver>SignMessageDialog</receiver>
    <slot>messageChanged()</slot>
    <hints>

@@ -132,7 +132,7 @@ if (OPENSSL_FOUND)
     message(STATUS "OpenSSL Found: ${OPENSSL_INCLUDE_DIR}")
     message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
 else ()
-    message(STATUS "OpenSSL Found: No... Skipping...")
+    message(FATAL_ERROR "OpenSSL is required for authenticated wallet and YubiKey seed protection")
 endif ()
 
 set(Boost_NO_BOOST_CMAKE ON)
@@ -624,7 +624,7 @@ if (OPENSSL_FOUND)
   add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
   target_link_libraries(${PROJECT_NAME} ${OPENSSL_LIBRARIES})
   if (MSVC)
-    target_link_libraries(${PROJECT_NAME} Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
+    target_link_libraries(${PROJECT_NAME} Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32 webauthn)
   endif()
 endif ()
 
@@ -648,6 +648,25 @@ endif (APPLE)
 
 #qt5_use_modules(${PROJECT_NAME} Core Widgets Gui Network PrintSupport)
 target_link_libraries(${PROJECT_NAME} Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Network Qt6::PrintSupport Qt6::Svg)
+
+include(CTest)
+if (BUILD_TESTING)
+  add_executable(YubiKeySeedStoreTests
+    tests/YubiKeySeedStoreTests.cpp
+    src/security/YubiKeySeedStore.cpp
+  )
+  target_include_directories(YubiKeySeedStoreTests PRIVATE src cryptonote/src ${OPENSSL_INCLUDE_DIR})
+  target_link_libraries(YubiKeySeedStoreTests Qt6::Core ${OPENSSL_LIBRARIES})
+  add_test(NAME YubiKeySeedStoreTests COMMAND YubiKeySeedStoreTests)
+  if (WIN32)
+    add_executable(WebAuthnPrfSmoke EXCLUDE_FROM_ALL
+      tests/WebAuthnPrfSmoke.cpp
+      src/security/WindowsWebAuthnPrf.cpp
+    )
+    target_include_directories(WebAuthnPrfSmoke PRIVATE src ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(WebAuthnPrfSmoke Qt6::Core Qt6::Gui Qt6::Widgets ${OPENSSL_LIBRARIES} webauthn)
+  endif()
+endif()
 
 # Installation
 

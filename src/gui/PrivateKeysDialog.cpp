@@ -35,14 +35,13 @@ void PrivateKeysDialog::walletOpened() {
     return;
   }
 
-  CryptoNote::AccountKeys keys;
-  if (!WalletAdapter::instance().getAccountKeys(keys) || keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
+  const QString masterSeedHex = WalletAdapter::instance().getSpendSeedHex();
+  if (masterSeedHex.isEmpty()) {
     m_ui->m_privateKeyEdit->setText(tr("Failed to read the wallet's private key."));
     m_ui->m_copyPrivateKeyButton->setEnabled(false);
     return;
   }
 
-  QString masterSeedHex = QString::fromStdString(Common::podToHex(keys.spendSecretKey));
   m_ui->m_privateKeyEdit->setText(masterSeedHex);
   m_ui->m_copyPrivateKeyButton->setEnabled(true);
 }
