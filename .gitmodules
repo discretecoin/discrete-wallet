@@ -1,4 +1,4 @@
 [submodule "cryptonote"]
 	path = cryptonote
-	url = https://github.com/discretecoin/discrete.git
-	branch = master
+	url = https://github.com/MatthewFreeman/discrete.git
+	branch = feature/yubikey-ephemeral-spend
