@@ -98,7 +98,7 @@ private:
   void setStatusBarText(const QString& _text);
   void showMessage(const QString& _text, QtMsgType _type);
   void askForWalletPassword(bool _error);
-  bool confirmWithPassword();
+  bool confirmWithPassword(QString* _verifiedPassword = nullptr);
   void encryptedFlagChanged(bool _encrypted);
   void peerCountUpdated(quint64 _peer_count);
   void finalityForkStateChanged(bool _active);

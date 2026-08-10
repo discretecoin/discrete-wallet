@@ -48,21 +48,28 @@ touch-only credential.
 
 1. Open a normal full wallet and verify its mnemonic recovery.
 2. Select **Wallet > Enable YubiKey protected spending...**.
-3. Complete the Windows Security PIN and touch prompts.
-4. Wait until the wallet reports that saving has completed.
-5. Move the generated `*.pre-yubikey-YYYYMMDD-HHMMSS.wallet` backup offline.
-6. Select **Wallet > Add backup YubiKey...** and enroll a different physical
+3. Give the first physical key a unique, recognizable label.
+4. Complete the Windows Security PIN and touch prompts.
+5. Wait until the wallet reports that saving and backup verification have completed.
+6. Move the generated `*.pre-yubikey-YYYYMMDD-HHMMSS-mmm.wallet` backup offline.
+7. Select **Wallet > Add backup YubiKey...** and enroll a different physical
    security key before relying on protected mode.
 
 The pre-migration backup is deliberately a complete wallet. Anyone who obtains
-that file and its wallet password can spend without the YubiKey.
+that file and its wallet password can spend without the YubiKey. The wallet
+serializes this backup from the live pre-migration state with the full cache,
+waits for the exact save operation to complete, then reopens it and checks its
+password/key integrity before removing the spend seed from the active wallet.
+It therefore includes the cached balance and transaction history visible at
+the moment protection is enabled and should not require a reset to display it.
 
 ## Adding backup security keys
 
-An already enrolled key must authorize every addition. After that
-authorization succeeds, remove it and insert the different physical YubiKey
-that will become the backup. Windows Security creates a new credential and then
-verifies its PRF output before the wallet file is updated. Those are two
+An already enrolled key must authorize every addition. The wallet names the
+specific enrolled key selected for authorization; after it succeeds, remove
+that named key and insert the differently named physical YubiKey that will
+become the backup. Windows Security creates a new credential and then verifies
+its PRF output before the wallet file is updated. Those are two
 separate PIN/touch prompts on the new key; both are required during enrollment.
 
 The wallet stores a user label and a short hash fingerprint for selection. FIDO2

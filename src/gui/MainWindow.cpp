@@ -943,7 +943,8 @@ void MainWindow::enableYubiKeyProtection() {
         tr("Stop mining before enabling protection. The miner holds a signing key in memory for its entire session."));
     return;
   }
-  if (!confirmWithPassword()) {
+  QString verifiedPassword;
+  if (!confirmWithPassword(&verifiedPassword)) {
     return;
   }
 
@@ -957,32 +958,65 @@ void MainWindow::enableYubiKeyProtection() {
       QMessageBox::Yes | QMessageBox::Cancel,
       QMessageBox::Cancel);
   if (decision != QMessageBox::Yes) {
+    verifiedPassword.fill(QChar());
     return;
   }
 
-  QString backupPath;
-  QString error;
-  if (!WalletAdapter::instance().enableYubiKeyProtection(winId(), backupPath, error)) {
-    QMessageBox::critical(this, tr("YubiKey protected spending"), error);
-    return;
-  }
-
-  Settings::instance().setTrackingMode(false);
-  m_ui->m_yubiKeyProtectionAction->setEnabled(false);
-  m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
-  m_ui->m_addYubiKeyAction->setEnabled(true);
-  m_ui->m_miningAction->setEnabled(false);
-  m_trackingModeIconLabel->show();
-  m_trackingModeIconLabel->setToolTip(
-      tr("YubiKey protected spending. One enrolled key; add a backup YubiKey."));
-  m_ui->m_showMnemonicSeedAction->setEnabled(true);
-  QMessageBox::information(
+  bool accepted = false;
+  const QString label = QInputDialog::getText(
       this,
-      tr("YubiKey protected spending enabled"),
-      tr("The spend seed has been removed from the active wallet and the protected wallet save has started.\n\n"
-         "Mandatory full-wallet backup:\n%1\n\nMove that backup offline after verifying your mnemonic recovery. The active protected wallet is now self-contained: back up its single .wallet file.")
-          .arg(backupPath) +
-      tr("\n\nOnly one physical YubiKey is enrolled right now. Use Wallet > Add backup YubiKey... and test that second key before treating protected mode as recoverable."));
+      tr("Name the first YubiKey"),
+      tr("Name for the first physical YubiKey:"),
+      QLineEdit::Normal,
+      tr("Primary YubiKey"),
+      &accepted).trimmed();
+  if (!accepted) {
+    verifiedPassword.fill(QChar());
+    return;
+  }
+  if (label.isEmpty() || label.size() > 64) {
+    verifiedPassword.fill(QChar());
+    QMessageBox::critical(this, tr("Name the first YubiKey"),
+        tr("The label must contain between 1 and 64 characters."));
+    return;
+  }
+
+  // Let the password, warning, and label dialogs fully close before Windows
+  // Security opens. This preserves the tested foreground window ordering.
+  QTimer::singleShot(
+      0, this,
+      [this, label, walletPassword = std::move(verifiedPassword)]() mutable {
+        QString backupPath;
+        QString error;
+        const bool enabled = WalletAdapter::instance().enableYubiKeyProtection(
+            winId(), label, walletPassword, backupPath, error);
+        walletPassword.fill(QChar());
+        if (!enabled) {
+          QMessageBox::critical(this, tr("YubiKey protected spending"), error);
+          return;
+        }
+
+        Settings::instance().setTrackingMode(false);
+        m_ui->m_yubiKeyProtectionAction->setEnabled(false);
+        m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
+        m_ui->m_addYubiKeyAction->setEnabled(true);
+        m_ui->m_miningAction->setEnabled(false);
+        m_trackingModeIconLabel->show();
+        m_trackingModeIconLabel->setToolTip(
+            tr("YubiKey protected spending. Enrolled key: %1; add a backup YubiKey.")
+                .arg(label));
+        m_ui->m_showMnemonicSeedAction->setEnabled(true);
+        QMessageBox::information(
+            this,
+            tr("YubiKey protected spending enabled"),
+            tr("The spend seed has been removed from the active wallet, and the protected wallet has been saved.\n\n"
+               "Verified full-state pre-migration backup:\n%1\n\n"
+               "This backup contains the wallet state from immediately before protection was enabled, including its cached balance and transaction history. Move it offline: anyone who obtains it and its wallet password can bypass the YubiKey.\n\n"
+               "The active protected wallet is self-contained: back up its single .wallet file.")
+                .arg(backupPath) +
+            tr("\n\nThe first physical key is stored as \"%1\". Use Wallet > Add backup YubiKey... and test a second key before treating protected mode as recoverable.")
+                .arg(label));
+      });
 #endif
 }
 
@@ -1196,7 +1230,10 @@ void MainWindow::lockWalletWithPassword() {
   }
 }
 
-bool MainWindow::confirmWithPassword() {
+bool MainWindow::confirmWithPassword(QString* _verifiedPassword) {
+  if (_verifiedPassword != nullptr) {
+    _verifiedPassword->clear();
+  }
   if (!Settings::instance().isEncrypted() && WalletAdapter::instance().tryOpen(""))
     return true;
 
@@ -1207,6 +1244,9 @@ bool MainWindow::confirmWithPassword() {
       QMessageBox::critical(nullptr, tr("Incorrect password"), tr("Wrong password."), QMessageBox::Ok);
       return false;
     } else {
+      if (_verifiedPassword != nullptr) {
+        *_verifiedPassword = password;
+      }
       return true;
     }
   }
