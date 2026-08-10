@@ -60,6 +60,7 @@ private:
   QLabel* m_encryptionStateIconLabel;
   QLabel* m_synchronizationStateIconLabel;
   QLabel* m_trackingModeIconLabel;
+  QLabel* m_yubiKeyModeIconLabel;
   QLabel* m_remoteModeIconLabel;
   QLabel* m_finalityWarningLabel;
   QSystemTrayIcon* m_trayIcon;

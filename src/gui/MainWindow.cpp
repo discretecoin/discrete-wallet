@@ -89,6 +89,7 @@ MainWindow::MainWindow() : QMainWindow(),
   m_connectionStateIconLabel->setMaximumSize(20, 20);
   m_encryptionStateIconLabel = new QLabel(this);
   m_trackingModeIconLabel = new QLabel(this);
+  m_yubiKeyModeIconLabel = new QLabel(this);
   m_remoteModeIconLabel = new QLabel(this);
   m_finalityWarningLabel = new QLabel(this);
   m_syncProgressBar = new QProgressBar();
@@ -188,6 +189,8 @@ void MainWindow::initUi() {
   m_encryptionStateIconLabel->setScaledContents( true );
   m_trackingModeIconLabel->setFixedSize(20, 20);
   m_trackingModeIconLabel->setScaledContents( true );
+  m_yubiKeyModeIconLabel->setFixedSize(20, 20);
+  m_yubiKeyModeIconLabel->setScaledContents(true);
   m_remoteModeIconLabel->setFixedSize(20, 20);
   m_remoteModeIconLabel->setScaledContents( true );
 
@@ -201,9 +204,12 @@ void MainWindow::initUi() {
   m_connectionStateIconLabel->setIcon(QIcon(":icons/disconnected"));
   m_connectionStateIconLabel->setIconSize(QSize(18, 18));
   m_trackingModeIconLabel->setPixmap(QIcon(":icons/tracking").pixmap(96, 96));
+  m_yubiKeyModeIconLabel->setPixmap(QIcon(":icons/yubikey").pixmap(96, 96));
   m_remoteModeIconLabel->hide();
   m_trackingModeIconLabel->hide();
+  m_yubiKeyModeIconLabel->hide();
   m_trackingModeIconLabel->setToolTip(tr("Tracking wallet. Spending unavailable"));
+  m_yubiKeyModeIconLabel->setToolTip(tr("YubiKey protected spending"));
   m_remoteModeIconLabel->setToolTip(tr("Wallet is connected through a remote node."));
 
   // First-seen finality: amber (not red) status-bar hint, shown only while the
@@ -215,11 +221,15 @@ void MainWindow::initUi() {
   m_syncStatusLabel->setMinimumWidth(0);
   m_syncStatusLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   statusBar()->setSizeGripEnabled(false);
+  // Keep the rightmost status indicator clear of the window frame. Additional
+  // permanent indicators grow inward from this protected edge.
+  statusBar()->setContentsMargins(0, 0, 8, 0);
   statusBar()->addWidget(m_syncStatusLabel, 1);
   statusBar()->addPermanentWidget(m_syncProgressBar);
   statusBar()->addPermanentWidget(m_synchronizationStateIconLabel);
   statusBar()->addPermanentWidget(m_connectionStateIconLabel);
   statusBar()->addPermanentWidget(m_encryptionStateIconLabel);
+  statusBar()->addPermanentWidget(m_yubiKeyModeIconLabel);
   statusBar()->addPermanentWidget(m_trackingModeIconLabel);
   statusBar()->addPermanentWidget(m_remoteModeIconLabel);
   statusBar()->addPermanentWidget(m_finalityWarningLabel);
@@ -996,8 +1006,8 @@ void MainWindow::enableYubiKeyProtection() {
   m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
   m_ui->m_addYubiKeyAction->setEnabled(true);
   m_ui->m_miningAction->setEnabled(false);
-  m_trackingModeIconLabel->show();
-  m_trackingModeIconLabel->setToolTip(
+  m_yubiKeyModeIconLabel->show();
+  m_yubiKeyModeIconLabel->setToolTip(
       tr("YubiKey protected spending. Enrolled key: %1; add a backup YubiKey.")
           .arg(label));
   m_ui->m_showMnemonicSeedAction->setEnabled(true);
@@ -1059,7 +1069,7 @@ void MainWindow::addYubiKeyProtectionKey() {
     }
 
     const int keyCount = WalletAdapter::instance().yubiKeyCount();
-    m_trackingModeIconLabel->setToolTip(
+    m_yubiKeyModeIconLabel->setToolTip(
         tr("YubiKey protected spending. %1 independently usable keys enrolled.")
             .arg(keyCount));
     QMessageBox::information(
@@ -1336,8 +1346,8 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     }
     if (yubiKeyProtected) {
       m_ui->m_miningAction->setEnabled(false);
-      m_trackingModeIconLabel->show();
-      m_trackingModeIconLabel->setToolTip(
+      m_yubiKeyModeIconLabel->show();
+      m_yubiKeyModeIconLabel->setToolTip(
           yubiKeyCount == 1
               ? tr("YubiKey protected spending. One enrolled key; add a backup YubiKey.")
               : tr("YubiKey protected spending. %1 independently usable keys enrolled.")
@@ -1406,6 +1416,7 @@ void MainWindow::walletClosed() {
   }
   m_encryptionStateIconLabel->hide();
   m_trackingModeIconLabel->hide();
+  m_yubiKeyModeIconLabel->hide();
   m_synchronizationStateIconLabel->hide();
 
   setWindowTitle(QString(tr("Discrete Wallet %1")).arg(Settings::instance().getVersion()));
