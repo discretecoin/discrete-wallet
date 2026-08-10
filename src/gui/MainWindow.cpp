@@ -981,42 +981,36 @@ void MainWindow::enableYubiKeyProtection() {
     return;
   }
 
-  // Let the password, warning, and label dialogs fully close before Windows
-  // Security opens. This preserves the tested foreground window ordering.
-  QTimer::singleShot(
-      0, this,
-      [this, label, walletPassword = std::move(verifiedPassword)]() mutable {
-        QString backupPath;
-        QString error;
-        const bool enabled = WalletAdapter::instance().enableYubiKeyProtection(
-            winId(), label, walletPassword, backupPath, error);
-        walletPassword.fill(QChar());
-        if (!enabled) {
-          QMessageBox::critical(this, tr("YubiKey protected spending"), error);
-          return;
-        }
+  QString backupPath;
+  QString error;
+  const bool enabled = WalletAdapter::instance().enableYubiKeyProtection(
+      winId(), label, verifiedPassword, backupPath, error);
+  verifiedPassword.fill(QChar());
+  if (!enabled) {
+    QMessageBox::critical(this, tr("YubiKey protected spending"), error);
+    return;
+  }
 
-        Settings::instance().setTrackingMode(false);
-        m_ui->m_yubiKeyProtectionAction->setEnabled(false);
-        m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
-        m_ui->m_addYubiKeyAction->setEnabled(true);
-        m_ui->m_miningAction->setEnabled(false);
-        m_trackingModeIconLabel->show();
-        m_trackingModeIconLabel->setToolTip(
-            tr("YubiKey protected spending. Enrolled key: %1; add a backup YubiKey.")
-                .arg(label));
-        m_ui->m_showMnemonicSeedAction->setEnabled(true);
-        QMessageBox::information(
-            this,
-            tr("YubiKey protected spending enabled"),
-            tr("The spend seed has been removed from the active wallet, and the protected wallet has been saved.\n\n"
-               "Verified full-state pre-migration backup:\n%1\n\n"
-               "This backup contains the wallet state from immediately before protection was enabled, including its cached balance and transaction history. Move it offline: anyone who obtains it and its wallet password can bypass the YubiKey.\n\n"
-               "The active protected wallet is self-contained: back up its single .wallet file.")
-                .arg(backupPath) +
-            tr("\n\nThe first physical key is stored as \"%1\". Use Wallet > Add backup YubiKey... and test a second key before treating protected mode as recoverable.")
-                .arg(label));
-      });
+  Settings::instance().setTrackingMode(false);
+  m_ui->m_yubiKeyProtectionAction->setEnabled(false);
+  m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
+  m_ui->m_addYubiKeyAction->setEnabled(true);
+  m_ui->m_miningAction->setEnabled(false);
+  m_trackingModeIconLabel->show();
+  m_trackingModeIconLabel->setToolTip(
+      tr("YubiKey protected spending. Enrolled key: %1; add a backup YubiKey.")
+          .arg(label));
+  m_ui->m_showMnemonicSeedAction->setEnabled(true);
+  QMessageBox::information(
+      this,
+      tr("YubiKey protected spending enabled"),
+      tr("The spend seed has been removed from the active wallet, and the protected wallet has been saved.\n\n"
+         "Verified full-state pre-migration backup:\n%1\n\n"
+         "This backup contains the wallet state from immediately before protection was enabled, including its cached balance and transaction history. Move it offline: anyone who obtains it and its wallet password can bypass the YubiKey.\n\n"
+         "The active protected wallet is self-contained: back up its single .wallet file.")
+          .arg(backupPath) +
+      tr("\n\nThe first physical key is stored as \"%1\". Use Wallet > Add backup YubiKey... and test a second key before treating protected mode as recoverable.")
+          .arg(label));
 #endif
 }
 
