@@ -48,20 +48,29 @@ touch-only credential.
 
 1. Open a normal full wallet and verify its mnemonic recovery.
 2. Select **Wallet > Enable YubiKey protected spending...**.
-3. Give the first physical key a unique, recognizable label.
-4. Complete the Windows Security PIN and touch prompts.
-5. Wait until the wallet reports that saving and backup verification have completed.
-6. Move the generated `*.pre-yubikey-YYYYMMDD-HHMMSS-mmm.wallet` backup offline.
+3. Read the recovery warning and continue only after confirming that the
+   mnemonic is available.
+4. Give the first physical key a unique, recognizable label.
+5. Complete the Windows Security PIN and touch prompts.
+6. Wait until the wallet reports that both protected files were written and
+   reopened successfully.
 7. Select **Wallet > Add backup YubiKey...** and enroll a different physical
    security key before relying on protected mode.
 
-The pre-migration backup is deliberately a complete wallet. Anyone who obtains
-that file and its wallet password can spend without the YubiKey. The wallet
-serializes this backup from the live pre-migration state with the full cache,
-waits for the exact save operation to complete, then reopens it and checks its
-password/key integrity before removing the spend seed from the active wallet.
-It therefore includes the cached balance and transaction history visible at
-the moment protection is enabled and should not require a reset to display it.
+Activation deliberately creates no full `*.pre-yubikey*.wallet` recovery file.
+The wallet first stages and reopens both the active protected tracking wallet
+and its protected automatic backup. It verifies their format, tracking
+identity, and exact embedded YubiKey metadata before atomically replacing the
+active wallet. If staging or validation fails, the original on-disk wallet is
+left in place and the detached seed is restored to the in-memory wallet.
+
+Before committing the protected wallet, the application directly removes
+known full-wallet bypass files beside it: matching old `pre-yubikey` files and
+unprotected or unreadable `.backup` and `.temp` files. Direct deletion does not
+use the Windows Recycle Bin. This is not a guaranteed forensic erase on SSDs,
+and the application cannot find or remove copies elsewhere, cloud version
+history, filesystem snapshots, or external backups. The mnemonic confirmation
+is therefore mandatory before the first YubiKey credential is registered.
 
 ## Adding backup security keys
 
@@ -93,21 +102,28 @@ continues to work.
 
 If an interrupted old activation left a sidecar next to a full wallet that
 still contains its spend seed, the wallet does not claim protection. Preserve
-the pre-migration backup and resolve the orphan sidecar before retrying.
+the mnemonic and resolve the orphan sidecar before retrying.
 
 ## Backup and recovery
 
 A protected backup consists of one self-contained tracking-only `.wallet` file.
 The embedded metadata survives reset/rescan and cache-free manual or automatic
 backups. Copying or renaming that `.wallet` therefore cannot separate it from
-the YubiKey recovery envelopes.
+the YubiKey recovery envelopes. After successful activation, the automatic
+`.backup` file is protected in the same way as the active wallet.
+
+When a protected wallet created by an earlier prototype is opened, the wallet
+checks for known local full-wallet bypass files and offers to delete them after
+the user confirms possession of the mnemonic. Keeping any such file means the
+YubiKey protection remains bypassable. This check still cannot discover copies
+outside the active wallet directory.
 
 The wallet supports up to eight independently usable security keys. Losing one
 does not block spending while another enrolled key remains available. A lost
 key's entry cannot currently be removed through the GUI, so label keys clearly
-and retain the mnemonic or offline pre-migration full-wallet backup as the final
-recovery path. Recovery deliberately creates a normal full wallet; protection
-can then be enabled again with new keys.
+and retain the mnemonic as the final recovery path. Recovery deliberately
+creates a normal full wallet; protection can then be enabled again with new
+keys.
 
 Protected wallets use wallet serialization version 3. It includes a
 compatibility guard because the old version 2 reader did not reject unknown
