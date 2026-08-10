@@ -11,10 +11,13 @@
 #include <iostream>
 
 #include "security/YubiKeySeedStore.h"
+#include "security/YubiKeyWalletFiles.h"
+#include "WalletLegacy/WalletLegacySerializer.h"
 
 using WalletGui::YubiKeySeedEnvelope;
 using WalletGui::YubiKeySeedMetadata;
 using WalletGui::YubiKeySeedStore;
+using WalletGui::YubiKeyWalletFiles;
 
 namespace {
 
@@ -61,6 +64,18 @@ bool writeVersion1Sidecar(const QString& walletPath,
   QFile file(YubiKeySeedStore::sidecarPath(walletPath));
   return file.open(QIODevice::WriteOnly) &&
       file.write(QJsonDocument(object).toJson(QJsonDocument::Indented)) > 0;
+}
+
+bool writeWalletVersionMarker(const QString& path, uint32_t version) {
+  QFile file(path);
+  const char marker = static_cast<char>(version);
+  return file.open(QIODevice::WriteOnly) && file.write(&marker, 1) == 1;
+}
+
+bool writeFileBytes(const QString& path, const QByteArray& contents) {
+  QFile file(path);
+  return file.open(QIODevice::WriteOnly) &&
+      file.write(contents) == contents.size() && file.flush();
 }
 
 }  // namespace
@@ -157,6 +172,95 @@ int main(int argc, char** argv) {
   if (!require(directory.isValid(), "temporary directory creation failed")) {
     return 1;
   }
+
+  const QString cleanupWalletPath =
+      directory.filePath(QStringLiteral("cleanup.wallet"));
+  const QString preYubiKeyPath = directory.filePath(
+      QStringLiteral("cleanup.pre-yubikey-20260810-120000-000.wallet"));
+  const QString unrelatedPreYubiKeyPath = directory.filePath(
+      QStringLiteral("unrelated.pre-yubikey-20260810-120000-000.wallet"));
+  const QString fullBackupPath =
+      cleanupWalletPath + QStringLiteral(".backup");
+  const QString fullTempPath = cleanupWalletPath + QStringLiteral(".temp");
+  if (!require(writeWalletVersionMarker(
+                   preYubiKeyPath,
+                   CryptoNote::WalletLegacySerializer::STANDARD_VERSION) &&
+               writeWalletVersionMarker(
+                   unrelatedPreYubiKeyPath,
+                   CryptoNote::WalletLegacySerializer::STANDARD_VERSION) &&
+               writeWalletVersionMarker(
+                   fullBackupPath,
+                   CryptoNote::WalletLegacySerializer::STANDARD_VERSION) &&
+               writeWalletVersionMarker(
+                   fullTempPath,
+                   CryptoNote::WalletLegacySerializer::STANDARD_VERSION),
+               "bypass test files could not be created")) {
+    return 1;
+  }
+  const QStringList bypassFiles =
+      YubiKeyWalletFiles::bypassFiles(cleanupWalletPath);
+  if (!require(bypassFiles.size() == 3,
+               "known full-wallet bypass files were not detected") ||
+      !require(bypassFiles.contains(preYubiKeyPath) &&
+                   bypassFiles.contains(fullBackupPath) &&
+                   bypassFiles.contains(fullTempPath) &&
+                   !bypassFiles.contains(unrelatedPreYubiKeyPath),
+               "bypass detection escaped the selected wallet scope")) {
+    return 1;
+  }
+  QStringList removedBypassFiles;
+  QStringList failedBypassFiles;
+  if (!require(YubiKeyWalletFiles::removeBypassFiles(
+                   cleanupWalletPath, removedBypassFiles,
+                   failedBypassFiles),
+               "known bypass files could not be directly removed") ||
+      !require(removedBypassFiles.size() == 3 &&
+                   failedBypassFiles.isEmpty() &&
+                   !QFile::exists(preYubiKeyPath) &&
+                   !QFile::exists(fullBackupPath) &&
+                   !QFile::exists(fullTempPath) &&
+                   QFile::exists(unrelatedPreYubiKeyPath),
+               "bypass removal deleted the wrong files or retained a target")) {
+    return 1;
+  }
+  if (!require(writeWalletVersionMarker(
+                   fullBackupPath,
+                   CryptoNote::WalletLegacySerializer::
+                       PROTECTED_SPEND_VERSION) &&
+               writeWalletVersionMarker(
+                   fullTempPath,
+                   CryptoNote::WalletLegacySerializer::
+                       PROTECTED_SPEND_VERSION) &&
+               YubiKeyWalletFiles::bypassFiles(cleanupWalletPath).isEmpty(),
+               "protected version-3 wallet copies were treated as bypass files")) {
+    return 1;
+  }
+
+  const QString replacementPath =
+      directory.filePath(QStringLiteral("replacement.tmp"));
+  const QString destinationPath =
+      directory.filePath(QStringLiteral("replacement.wallet"));
+  if (!require(writeFileBytes(replacementPath,
+                              QByteArrayLiteral("protected")),
+               "atomic replacement source could not be created") ||
+      !require(writeFileBytes(destinationPath, QByteArrayLiteral("full")),
+               "atomic replacement destination could not be created")) {
+    return 1;
+  }
+  if (!require(YubiKeyWalletFiles::replaceFileAtomically(
+                   replacementPath, destinationPath),
+               "atomic protected-wallet replacement failed") ||
+      !require(!QFile::exists(replacementPath),
+               "atomic replacement left its source path behind")) {
+    return 1;
+  }
+  QFile replaced(destinationPath);
+  if (!require(replaced.open(QIODevice::ReadOnly) &&
+                   replaced.readAll() == QByteArrayLiteral("protected"),
+               "atomic replacement did not install the protected bytes")) {
+    return 1;
+  }
+
   const QString walletPath = directory.filePath(QStringLiteral("multi.wallet"));
   if (!require(YubiKeySeedStore::save(walletPath, metadata, error), qPrintable(error))) {
     return 1;

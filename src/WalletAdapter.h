@@ -12,6 +12,7 @@
 #include <QTime>
 #include <QTimer>
 #include <QPushButton>
+#include <QStringList>
 #include <QtGui/qwindowdefs.h>
 
 #include <list>
@@ -106,9 +107,15 @@ public:
   bool hasYubiKeyMetadata() const;
   bool isYubiKeyProtected() const;
   int yubiKeyCount() const;
+  QStringList yubiKeyBypassFiles() const;
+  bool removeYubiKeyBypassFiles(QStringList& _removedFiles,
+                                QString& _errorText);
   bool enableYubiKeyProtection(WId _parentWindow, const QString& _label,
                                const QString& _walletPassword,
-                               QString& _backupPath, QString& _errorText);
+                               QString& _protectedBackupPath,
+                               QStringList& _removedBypassFiles,
+                               QString& _warningText,
+                               QString& _errorText);
   bool addYubiKeyProtectionKey(WId _parentWindow, const QString& _label,
                               QString& _errorText);
   bool unlockYubiKeySeed(WId _parentWindow, CryptoPQ::SeedMaster& _seedMaster,
@@ -175,8 +182,10 @@ private:
             quint64* _saveGeneration = nullptr, bool _backupMode = false);
   bool saveAndWait(const QString& _file, bool _details, bool _cache,
                    bool _backupMode, QString& _errorText);
-  bool verifyWalletSnapshot(const QString& _file, const QString& _password,
-                            QString& _errorText);
+  bool verifyProtectedWalletSnapshot(
+      const QString& _file, const QString& _password,
+      const CryptoNote::PqTrackingKeys& _expectedTracking,
+      const QByteArray& _expectedMetadata, QString& _errorText);
   bool loadYubiKeyMetadata(YubiKeySeedMetadata& _metadata,
                            QString& _errorText) const;
   bool storeEmbeddedYubiKeyMetadata(const YubiKeySeedMetadata& _metadata,

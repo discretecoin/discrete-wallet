@@ -942,6 +942,60 @@ void MainWindow::encryptWallet() {
   }
 }
 
+void MainWindow::handleYubiKeyBypassFiles() {
+#ifndef Q_OS_WIN
+  return;
+#else
+  const QStringList bypassFiles =
+      WalletAdapter::instance().yubiKeyBypassFiles();
+  if (bypassFiles.isEmpty()) {
+    return;
+  }
+
+  QMessageBox warning(
+      QMessageBox::Critical,
+      tr("Full-wallet files bypass YubiKey protection"),
+      tr("This protected wallet has known local files that may still contain its unprotected spend seed:\n\n%1\n\n"
+         "Anyone who obtains one of those full-wallet files can bypass every YubiKey. Confirm that you have the mnemonic, then delete these files directly. They will not be sent to the Recycle Bin.\n\n"
+         "The wallet cannot remove copies elsewhere, cloud history, filesystem snapshots, or recoverable SSD blocks.")
+          .arg(bypassFiles.join(QStringLiteral("\n"))),
+      QMessageBox::NoButton,
+      this);
+  QPushButton* deleteButton = warning.addButton(
+      tr("I have the mnemonic - delete files"), QMessageBox::DestructiveRole);
+  warning.addButton(tr("Keep files (protection can be bypassed)"),
+                    QMessageBox::RejectRole);
+  warning.setDefaultButton(deleteButton);
+  warning.exec();
+  if (warning.clickedButton() != deleteButton) {
+    m_yubiKeyModeIconLabel->setToolTip(
+        tr("WARNING: known full-wallet files can bypass YubiKey protected spending."));
+    QMessageBox::critical(
+        this,
+        tr("YubiKey protection remains bypassable"),
+        tr("The files were kept. This wallet must not be treated as YubiKey protected until every full-wallet copy is removed or secured offline."));
+    return;
+  }
+
+  QStringList removedFiles;
+  QString error;
+  if (!WalletAdapter::instance().removeYubiKeyBypassFiles(
+          removedFiles, error)) {
+    m_yubiKeyModeIconLabel->setToolTip(
+        tr("WARNING: known full-wallet files can bypass YubiKey protected spending."));
+    QMessageBox::critical(this, tr("Could not remove bypass files"), error);
+    return;
+  }
+
+  QMessageBox::information(
+      this,
+      tr("Full-wallet bypass files removed"),
+      tr("These files were deleted directly, not moved to the Recycle Bin:\n\n%1\n\n"
+         "A new automatic backup made from the open protected tracking wallet will contain the same YubiKey protection.")
+          .arg(removedFiles.join(QStringLiteral("\n"))));
+#endif
+}
+
 void MainWindow::enableYubiKeyProtection() {
 #ifndef Q_OS_WIN
   QMessageBox::critical(this, tr("YubiKey protected spending"),
@@ -953,22 +1007,26 @@ void MainWindow::enableYubiKeyProtection() {
         tr("Stop mining before enabling protection. The miner holds a signing key in memory for its entire session."));
     return;
   }
-  QString verifiedPassword;
-  if (!confirmWithPassword(&verifiedPassword)) {
+
+  QMessageBox recoveryWarning(
+      QMessageBox::Warning,
+      tr("Confirm mnemonic recovery before continuing"),
+      tr("Before registering any YubiKey, make sure you have correctly written down the wallet's mnemonic and can read it back. The mnemonic is the final recovery method if every enrolled YubiKey is lost, damaged, or becomes unusable.\n\n"
+         "No full pre-YubiKey wallet will be kept. After a protected tracking wallet and its protected backup have been written and verified, known full-wallet bypass copies beside this wallet (old .backup, .temp, and pre-yubikey files) will be deleted directly, not sent to the Recycle Bin. Copies elsewhere, cloud version history, filesystem snapshots, and forensic SSD recovery cannot be removed or ruled out by the wallet.\n\n"
+         "Do not continue unless the mnemonic is available."),
+      QMessageBox::NoButton,
+      this);
+  QPushButton* continueButton = recoveryWarning.addButton(
+      tr("I have the mnemonic - continue"), QMessageBox::AcceptRole);
+  recoveryWarning.addButton(QMessageBox::Cancel);
+  recoveryWarning.setDefaultButton(QMessageBox::Cancel);
+  recoveryWarning.exec();
+  if (recoveryWarning.clickedButton() != continueButton) {
     return;
   }
 
-  const QMessageBox::StandardButton decision = QMessageBox::warning(
-      this,
-      tr("Enable YubiKey protected spending"),
-      tr("This converts the current wallet into a tracking-only wallet and encrypts its 32-byte spend seed with a credential stored on a FIDO2 security key.\n\n"
-         "You will need the YubiKey, its PIN, and a touch for every spend, seed export, or message signature. Mining and account registration are not supported in this first version because they would keep or reuse spend authority outside the one-operation boundary.\n\n"
-         "A full pre-migration wallet backup will be created automatically. Move that backup offline: anyone who obtains it and its wallet password can bypass the YubiKey. Your mnemonic remains the final recovery method.\n\n"
-         "Continue?"),
-      QMessageBox::Yes | QMessageBox::Cancel,
-      QMessageBox::Cancel);
-  if (decision != QMessageBox::Yes) {
-    verifiedPassword.fill(QChar());
+  QString verifiedPassword;
+  if (!confirmWithPassword(&verifiedPassword)) {
     return;
   }
 
@@ -991,10 +1049,13 @@ void MainWindow::enableYubiKeyProtection() {
     return;
   }
 
-  QString backupPath;
+  QString protectedBackupPath;
+  QStringList removedBypassFiles;
+  QString warning;
   QString error;
   const bool enabled = WalletAdapter::instance().enableYubiKeyProtection(
-      winId(), label, verifiedPassword, backupPath, error);
+      winId(), label, verifiedPassword, protectedBackupPath,
+      removedBypassFiles, warning, error);
   verifiedPassword.fill(QChar());
   if (!enabled) {
     QMessageBox::critical(this, tr("YubiKey protected spending"), error);
@@ -1014,13 +1075,18 @@ void MainWindow::enableYubiKeyProtection() {
   QMessageBox::information(
       this,
       tr("YubiKey protected spending enabled"),
-      tr("The spend seed has been removed from the active wallet, and the protected wallet has been saved.\n\n"
-         "Verified full-state pre-migration backup:\n%1\n\n"
-         "This backup contains the wallet state from immediately before protection was enabled, including its cached balance and transaction history. Move it offline: anyone who obtains it and its wallet password can bypass the YubiKey.\n\n"
-         "The active protected wallet is self-contained: back up its single .wallet file.")
-          .arg(backupPath) +
+      tr("The active wallet and its automatic backup were saved as self-contained tracking-only protected wallets and reopened for validation. No full pre-YubiKey wallet was created.\n\n"
+         "Protected automatic backup:\n%1\n\n"
+         "Known local full-wallet bypass files removed directly (not Recycle Bin):\n%2")
+          .arg(protectedBackupPath,
+               removedBypassFiles.isEmpty()
+                   ? tr("None found")
+                   : removedBypassFiles.join(QStringLiteral("\n"))) +
       tr("\n\nThe first physical key is stored as \"%1\". Use Wallet > Add backup YubiKey... and test a second key before treating protected mode as recoverable.")
           .arg(label));
+  if (!warning.isEmpty()) {
+    QMessageBox::warning(this, tr("Protected backup warning"), warning);
+  }
 #endif
 }
 
@@ -1357,7 +1423,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
           this,
           tr("YubiKey migration incomplete"),
           tr("A YubiKey sidecar exists, but this wallet file still contains its spend seed. "
-             "This wallet is NOT YubiKey protected. Restore or preserve the mandatory pre-migration backup, close the wallet, and resolve the orphan .yubikey.json file before retrying."));
+             "This wallet is NOT YubiKey protected. Close the wallet, keep the current files offline until recovery is confirmed, and resolve the orphan .yubikey.json file before retrying."));
     }
 
     setWindowTitle(QString(tr("%1 - Discrete Wallet %2")).arg(Settings::instance().getWalletFile()).arg(Settings::instance().getVersion()));
@@ -1381,6 +1447,9 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
       });
     }
 
+    if (yubiKeyProtected) {
+      handleYubiKeyBypassFiles();
+    }
     WalletAdapter::instance().autoBackup();
 
   } else {

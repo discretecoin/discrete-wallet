@@ -100,6 +100,7 @@ private:
   void showMessage(const QString& _text, QtMsgType _type);
   void askForWalletPassword(bool _error);
   bool confirmWithPassword(QString* _verifiedPassword = nullptr);
+  void handleYubiKeyBypassFiles();
   void encryptedFlagChanged(bool _encrypted);
   void peerCountUpdated(quint64 _peer_count);
   void finalityForkStateChanged(bool _active);

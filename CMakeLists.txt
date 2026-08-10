@@ -654,6 +654,7 @@ if (BUILD_TESTING)
   add_executable(YubiKeySeedStoreTests
     tests/YubiKeySeedStoreTests.cpp
     src/security/YubiKeySeedStore.cpp
+    src/security/YubiKeyWalletFiles.cpp
   )
   target_include_directories(YubiKeySeedStoreTests PRIVATE src cryptonote/src ${OPENSSL_INCLUDE_DIR})
   target_link_libraries(YubiKeySeedStoreTests Qt6::Core ${OPENSSL_LIBRARIES})
