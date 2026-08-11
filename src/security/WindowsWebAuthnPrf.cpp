@@ -41,7 +41,7 @@ public:
     const int x = haveParentRect ? parentRect.left + (parentRect.right - parentRect.left) / 2 : 0;
     const int y = haveParentRect ? parentRect.top + (parentRect.bottom - parentRect.top) / 2 : 0;
     m_anchor = CreateWindowExW(
-        WS_EX_TOOLWINDOW,
+        WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         L"STATIC",
         L"",
         WS_POPUP,
@@ -55,13 +55,29 @@ public:
         nullptr);
     if (m_anchor != nullptr) {
       ShowWindow(m_anchor, SW_SHOWNORMAL);
+      SetWindowPos(
+          m_anchor, HWND_TOPMOST, 0, 0, 0, 0,
+          SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
       SetForegroundWindow(m_anchor);
+      SetFocus(m_anchor);
     }
   }
 
   ~WebAuthnPromptAnchor() {
     if (m_anchor != nullptr) {
+      // Windows Security restores focus to its native owner when a WebAuthn
+      // prompt closes. The owner is this short-lived anchor, not the wallet.
+      // Destroy it first, then explicitly restore the real wallet HWND before
+      // a possible second enrollment-verification prompt is created.
+      ShowWindow(m_anchor, SW_HIDE);
       DestroyWindow(m_anchor);
+      m_anchor = nullptr;
+    }
+    if (m_parent != nullptr && IsWindow(m_parent)) {
+      SetActiveWindow(m_parent);
+      BringWindowToTop(m_parent);
+      SetForegroundWindow(m_parent);
+      SetFocus(m_parent);
     }
   }
 

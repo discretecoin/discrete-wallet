@@ -1008,20 +1008,28 @@ void MainWindow::enableYubiKeyProtection() {
     return;
   }
 
-  QMessageBox recoveryWarning(
-      QMessageBox::Warning,
-      tr("Confirm mnemonic recovery before continuing"),
-      tr("Before registering any YubiKey, make sure you have correctly written down the wallet's mnemonic and can read it back. The mnemonic is the final recovery method if every enrolled YubiKey is lost, damaged, or becomes unusable.\n\n"
-         "No full pre-YubiKey wallet will be kept. After a protected tracking wallet and its protected backup have been written and verified, known full-wallet bypass copies beside this wallet (old .backup, .temp, and pre-yubikey files) will be deleted directly, not sent to the Recycle Bin. Copies elsewhere, cloud version history, filesystem snapshots, and forensic SSD recovery cannot be removed or ruled out by the wallet.\n\n"
-         "Do not continue unless the mnemonic is available."),
-      QMessageBox::NoButton,
-      this);
-  QPushButton* continueButton = recoveryWarning.addButton(
-      tr("I have the mnemonic - continue"), QMessageBox::AcceptRole);
-  recoveryWarning.addButton(QMessageBox::Cancel);
-  recoveryWarning.setDefaultButton(QMessageBox::Cancel);
-  recoveryWarning.exec();
-  if (recoveryWarning.clickedButton() != continueButton) {
+  bool mnemonicConfirmed = false;
+  {
+    QMessageBox recoveryWarning(
+        QMessageBox::Warning,
+        tr("Confirm mnemonic recovery before continuing"),
+        tr("Before registering any YubiKey, make sure you have correctly written down the wallet's mnemonic and can read it back. The mnemonic is the final recovery method if every enrolled YubiKey is lost, damaged, or becomes unusable.\n\n"
+           "No full pre-YubiKey wallet will be kept. After a protected tracking wallet and its protected backup have been written and verified, known full-wallet bypass copies beside this wallet (old .backup, .temp, and pre-yubikey files) will be deleted directly, not sent to the Recycle Bin. Copies elsewhere, cloud version history, filesystem snapshots, and forensic SSD recovery cannot be removed or ruled out by the wallet.\n\n"
+           "Do not continue unless the mnemonic is available."),
+        QMessageBox::NoButton,
+        this);
+    QPushButton* continueButton = recoveryWarning.addButton(
+        tr("I have the mnemonic - continue"), QMessageBox::AcceptRole);
+    QPushButton* cancelButton = recoveryWarning.addButton(QMessageBox::Cancel);
+    // Qlementine renders the default button with the wallet's green primary
+    // treatment. Making Cancel the default left the actual continuation action
+    // looking like unframed text on the dark dialog.
+    recoveryWarning.setDefaultButton(continueButton);
+    recoveryWarning.setEscapeButton(cancelButton);
+    recoveryWarning.exec();
+    mnemonicConfirmed = recoveryWarning.clickedButton() == continueButton;
+  }
+  if (!mnemonicConfirmed) {
     return;
   }
 
