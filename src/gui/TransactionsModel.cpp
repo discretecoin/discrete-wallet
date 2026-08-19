@@ -73,8 +73,11 @@ TransactionsModel::TransactionsModel() : QAbstractItemModel() {
     static_cast<void(TransactionsModel::*)(CryptoNote::TransactionId)>(&TransactionsModel::appendTransaction), Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionUpdatedSignal, this, &TransactionsModel::updateWalletTransaction,
     Qt::QueuedConnection);
-  connect(&NodeAdapter::instance(), &NodeAdapter::localBlockchainUpdatedSignal, this, &TransactionsModel::localBlockchainUpdated,
-    Qt::QueuedConnection);
+  // Refresh confirmations only after the wallet has consumed the new chain
+  // state. The in-process node emits localBlockchainUpdated once per accepted
+  // block, so using that signal here floods the GUI during initial catch-up.
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationCompletedSignal, this,
+    &TransactionsModel::walletSynchronizationCompleted, Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &TransactionsModel::reset,
     Qt::QueuedConnection);
 }
@@ -499,7 +502,12 @@ void TransactionsModel::updateWalletTransaction(CryptoNote::TransactionId _id) {
   Q_EMIT dataChanged(index(firstRow, COLUMN_STATE), index(lastRow, COLUMN_STATE));
 }
 
-void TransactionsModel::localBlockchainUpdated(quint64 _height) {
+void TransactionsModel::walletSynchronizationCompleted(int _error, const QString& _errorText) {
+  Q_UNUSED(_errorText);
+  if (_error != 0) {
+    return;
+  }
+
   if(rowCount() > 0) {
     Q_EMIT dataChanged(index(0, COLUMN_STATE), index(rowCount() - 1, COLUMN_STATE));
   }
