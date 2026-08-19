@@ -16,6 +16,7 @@
 #include <vector>
 #include <atomic>
 #include <fstream>
+#include <thread>
 
 #include <boost/program_options.hpp>
 
@@ -50,6 +51,8 @@ public:
   void backup(const QString& _file);
   void autoBackup();
   void reset();
+  bool isResetInProgress() const;
+  void waitForResetWorker();
 
   QString getAddress() const;
   quint64 getActualBalance() const;
@@ -126,6 +129,9 @@ private:
   std::unique_ptr<System::Dispatcher> m_rpcDispatcher;
   QMutex m_mutex;
   std::atomic<bool> m_isBackupInProgress;
+  std::atomic<bool> m_isResetInProgress;
+  QMetaObject::Connection m_resetSaveConnection;
+  std::thread m_resetWorker;
   std::atomic<bool> m_isSynchronized;
   std::atomic<quint64> m_lastWalletTransactionId;
   QTimer m_newTransactionsNotificationTimer;
@@ -145,11 +151,15 @@ private:
   void onWalletInitCompleted(int _error, const QString& _error_text);
   void onWalletSendTransactionCompleted(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
 
-  bool save(const QString& _file, bool _details, bool _cache);
+  bool save(const QString& _file, bool _details, bool _cache,
+            bool _waitForFile = true);
   void lock();
   void unlock();
-  bool openFile(const QString& _file, bool _read_only);
+  bool openFile(const QString& _file, bool _read_only,
+                bool _waitForLock = true);
   void closeFile();
+  void finishResetAfterSave();
+  void completeResetAfterWalletDestruction();
   void notifyAboutLastTransaction();
   QString walletErrorMessage(int _error_code);
   void runWalletRpc();
@@ -164,6 +174,7 @@ Q_SIGNALS:
   void walletInitCompletedSignal(int _error, const QString& _error_text);
   void walletCloseCompletedSignal();
   void walletSaveCompletedSignal(int _error, const QString& _error_text);
+  void walletResetCompletedSignal(int _error, const QString& _error_text);
   void walletSynchronizationProgressUpdatedSignal(quint64 _current, quint64 _total);
   void walletSynchronizationCompletedSignal(int _error, const QString& _error_text);
   void walletActualBalanceUpdatedSignal(quint64 _actual_balance);

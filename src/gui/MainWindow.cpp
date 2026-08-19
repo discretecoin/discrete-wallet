@@ -11,6 +11,7 @@
 #include <QStandardPaths>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QSystemTrayIcon>
 #include <QDesktopServices>
 #include <QTimer>
@@ -75,7 +76,7 @@ MainWindow& MainWindow::instance() {
 }
 
 MainWindow::MainWindow() : QMainWindow(),
-  m_ui(new Ui::MainWindow), m_trayIcon(nullptr), m_tabActionGroup(new QActionGroup(this)), m_isAboutToQuit(false), paymentServer(0),
+  m_ui(new Ui::MainWindow), m_resetProgressDialog(nullptr), m_trayIcon(nullptr), m_tabActionGroup(new QActionGroup(this)), m_isAboutToQuit(false), paymentServer(0),
   maxRecentFiles(10), trayIconMenu(0), toggleHideAction(0), maxProgressBar(100), m_statusBarText("") {
   m_ui->setupUi(this);
   m_connectionStateIconLabel = new QPushButton();
@@ -117,6 +118,8 @@ void MainWindow::connectToSignals() {
   connect(&WalletAdapter::instance(), &WalletAdapter::walletStateChangedSignal, this, &MainWindow::setStatusBarText);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletInitCompletedSignal, this, &MainWindow::walletOpened);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &MainWindow::walletClosed);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletResetCompletedSignal,
+          this, &MainWindow::walletResetCompleted, Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionCreatedSignal, this, [this]() {
       QApplication::alert(this);
   });
@@ -747,8 +750,40 @@ void MainWindow::resetWallet() {
   Q_ASSERT(WalletAdapter::instance().isOpen());
   if (QMessageBox::warning(this, tr("Warning"), tr("Your wallet will be reset and restored from blockchain.\n"
     "Are you sure?"), QMessageBox::Ok, QMessageBox::Cancel) == QMessageBox::Ok) {
-    WalletAdapter::instance().reset();
-    WalletAdapter::instance().open("");
+    m_ui->m_resetAction->setEnabled(false);
+    m_resetProgressDialog = new QProgressDialog(
+        tr("Saving the wallet and preparing a full blockchain rescan..."),
+        QString(), 0, 0, this);
+    m_resetProgressDialog->setWindowTitle(tr("Resetting wallet"));
+    m_resetProgressDialog->setCancelButton(nullptr);
+    m_resetProgressDialog->setWindowModality(Qt::ApplicationModal);
+    m_resetProgressDialog->setMinimumDuration(0);
+    m_resetProgressDialog->setAutoClose(false);
+    m_resetProgressDialog->setAutoReset(false);
+    m_resetProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
+    m_resetProgressDialog->show();
+
+    // Paint the progress dialog first; teardown continues asynchronously.
+    QTimer::singleShot(0, &WalletAdapter::instance(), &WalletAdapter::reset);
+  }
+}
+
+void MainWindow::walletResetCompleted(int _error, const QString& _errorText) {
+  if (m_resetProgressDialog != nullptr) {
+    m_resetProgressDialog->close();
+    m_resetProgressDialog->deleteLater();
+    m_resetProgressDialog = nullptr;
+  }
+
+  if (_error != 0) {
+    if (WalletAdapter::instance().isOpen()) {
+      m_ui->m_resetAction->setEnabled(true);
+    }
+    QMessageBox::critical(
+        this, tr("Wallet reset failed"),
+        _errorText.isEmpty()
+            ? tr("The wallet could not be reset. Error code: %1").arg(_error)
+            : _errorText);
   }
 }
 

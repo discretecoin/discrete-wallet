@@ -19,6 +19,7 @@
 #include "PaymentServer.h"
 
 class QActionGroup;
+class QProgressDialog;
 class QToolButton;
 
 namespace Ui {
@@ -55,6 +56,7 @@ private:
 
   QScopedPointer<Ui::MainWindow> m_ui;
   QProgressBar* m_syncProgressBar;
+  QProgressDialog* m_resetProgressDialog;
   QLabel* m_syncStatusLabel;
   QPushButton* m_connectionStateIconLabel;
   QLabel* m_encryptionStateIconLabel;
@@ -106,6 +108,7 @@ private:
   void walletSynchronized(int _error, const QString& _error_text);
   void walletOpened(bool _error, const QString& _error_text);
   void walletClosed();
+  void walletResetCompleted(int _error, const QString& _error_text);
   void updateWalletAddress(const QString& _address);
   void reset();
   void onUriOpenSignal();
