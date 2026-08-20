@@ -185,8 +185,7 @@ private:
   void onWalletSendTransactionCompleted(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
 
   bool save(const QString& _file, bool _details, bool _cache,
-            bool _waitForFile = true);
-            quint64* _saveGeneration = nullptr, bool _backupMode = false);
+            bool _waitForFile = true, quint64* _saveGeneration = nullptr, bool _backupMode = false);
   bool saveAndWait(const QString& _file, bool _details, bool _cache,
                    bool _backupMode, QString& _errorText);
   bool verifyProtectedWalletSnapshot(
