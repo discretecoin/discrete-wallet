@@ -5,18 +5,25 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <QApplication>
 #include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QGridLayout>
 #include <QTextEdit>
 #include <QDateTime>
+#include <QEventLoop>
 #include <QLocale>
+#include <QStringList>
 #include <QVector>
 #include <QDebug>
 
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <system_error>
 #include <thread>
 
 #include <boost/filesystem.hpp>
@@ -45,6 +52,11 @@
 #include "CurrencyAdapter.h"
 #include "LoggerAdapter.h"
 #include "WalletLegacy/WalletLegacy.h"
+#include "WalletLegacy/WalletLegacySerializer.h"
+#include "Common/SecureMemory.h"
+#include "security/WindowsWebAuthnPrf.h"
+#include "security/YubiKeySeedStore.h"
+#include "security/YubiKeyWalletFiles.h"
 
 #undef ERROR
 
@@ -68,6 +80,7 @@ WalletAdapter& WalletAdapter::instance() {
 
 WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBackupInProgress(false),
   m_isResetInProgress(false),
+  m_saveGeneration(0), m_activeSaveGeneration(0),
   m_syncSpeed(0), m_syncPeriod(0), m_isSynchronized(false), m_newTransactionsNotificationTimer(),
   m_lastWalletTransactionId(std::numeric_limits<quint64>::max()),
   m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter")
@@ -256,6 +269,567 @@ void WalletAdapter::waitForResetWorker() {
   if (m_resetWorker.joinable()) {
     m_resetWorker.join();
   }
+QByteArray WalletAdapter::embeddedYubiKeyMetadata() const {
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr) {
+    return QByteArray();
+  }
+  std::string metadata;
+  if (!wallet->getPqProtectedSpendMetadata(metadata)) {
+    return QByteArray();
+  }
+  return QByteArray::fromStdString(metadata);
+}
+
+bool WalletAdapter::loadYubiKeyMetadata(YubiKeySeedMetadata& _metadata,
+                                        QString& _errorText) const {
+  const QByteArray embedded = embeddedYubiKeyMetadata();
+  if (!embedded.isEmpty()) {
+    return YubiKeySeedStore::deserialize(embedded, _metadata, _errorText);
+  }
+  // Prototype compatibility: an r11 or older wallet is migrated immediately
+  // after load, but retain this fallback if its first migration save failed.
+  return YubiKeySeedStore::load(
+      Settings::instance().getWalletFile(), _metadata, _errorText);
+}
+
+bool WalletAdapter::storeEmbeddedYubiKeyMetadata(
+    const YubiKeySeedMetadata& _metadata, QString& _errorText,
+    QByteArray* _serialized) {
+  QByteArray serialized;
+  if (!YubiKeySeedStore::serialize(_metadata, serialized, _errorText)) {
+    return false;
+  }
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr ||
+      !wallet->setPqProtectedSpendMetadata(serialized.toStdString())) {
+    _errorText = tr("The wallet backend refused the embedded YubiKey metadata.");
+    return false;
+  }
+  if (_serialized != nullptr) {
+    *_serialized = serialized;
+  }
+  return true;
+}
+
+bool WalletAdapter::hasYubiKeyMetadata() const {
+  return !embeddedYubiKeyMetadata().isEmpty() ||
+      YubiKeySeedStore::exists(Settings::instance().getWalletFile());
+}
+
+bool WalletAdapter::isYubiKeyProtected() const {
+  return m_wallet != nullptr && m_wallet->isTrackingWallet() &&
+         hasYubiKeyMetadata();
+}
+
+int WalletAdapter::yubiKeyCount() const {
+  YubiKeySeedMetadata metadata;
+  QString error;
+  return loadYubiKeyMetadata(metadata, error)
+      ? metadata.keys.size() : 0;
+}
+
+QStringList WalletAdapter::yubiKeyBypassFiles() const {
+  return YubiKeyWalletFiles::bypassFiles(
+      Settings::instance().getWalletFile());
+}
+
+bool WalletAdapter::removeYubiKeyBypassFiles(
+    QStringList& _removedFiles, QString& _errorText) {
+  _removedFiles.clear();
+  _errorText.clear();
+  QStringList failures;
+  YubiKeyWalletFiles::removeBypassFiles(
+      Settings::instance().getWalletFile(), _removedFiles, failures);
+  for (const QString& removed : _removedFiles) {
+    m_logger(Logging::INFO) << "Removed full-wallet YubiKey bypass file: "
+                            << removed.toStdString();
+  }
+  if (!failures.isEmpty()) {
+    _errorText = tr("Could not directly remove these full-wallet bypass files:\n%1")
+        .arg(failures.join(QStringLiteral("\n")));
+    return false;
+  }
+  return true;
+}
+
+void WalletAdapter::migrateLegacyYubiKeySidecar() {
+  if (m_wallet == nullptr || !m_wallet->isTrackingWallet()) {
+    return;
+  }
+  const QString walletPath = Settings::instance().getWalletFile();
+  if (!YubiKeySeedStore::exists(walletPath)) {
+    return;
+  }
+
+  YubiKeySeedMetadata sidecarMetadata;
+  QString error;
+  if (!YubiKeySeedStore::load(walletPath, sidecarMetadata, error)) {
+    m_logger(Logging::ERROR) << "Cannot migrate YubiKey sidecar: "
+                             << error.toStdString();
+    return;
+  }
+
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  CryptoNote::PqTrackingKeys tracking;
+  if (wallet == nullptr || !wallet->getPqTrackingKeys(tracking)) {
+    m_logger(Logging::ERROR) << "Cannot migrate YubiKey sidecar: tracking identity is unavailable";
+    return;
+  }
+  const QByteArray currentBinding = YubiKeySeedStore::walletBinding(
+      QByteArray::fromStdString(CryptoNote::encodePqTrackingKey(tracking)));
+  if (currentBinding != sidecarMetadata.walletBinding) {
+    m_logger(Logging::ERROR) << "Cannot migrate YubiKey sidecar: wallet binding mismatch";
+    return;
+  }
+
+  QByteArray sidecarData;
+  if (!YubiKeySeedStore::serialize(sidecarMetadata, sidecarData, error)) {
+    m_logger(Logging::ERROR) << "Cannot migrate YubiKey sidecar: "
+                             << error.toStdString();
+    return;
+  }
+
+  const QByteArray embedded = embeddedYubiKeyMetadata();
+  if (!embedded.isEmpty()) {
+    if (embedded == sidecarData) {
+      if (!QFile::remove(YubiKeySeedStore::sidecarPath(walletPath))) {
+        m_logger(Logging::WARNING) << "Embedded YubiKey metadata is valid, but the legacy sidecar could not be removed";
+      }
+    } else {
+      m_logger(Logging::WARNING) << "Embedded YubiKey metadata differs from the legacy sidecar; retaining both";
+    }
+    return;
+  }
+
+  if (!storeEmbeddedYubiKeyMetadata(sidecarMetadata, error, &sidecarData)) {
+    m_logger(Logging::ERROR) << "Cannot embed YubiKey metadata: "
+                             << error.toStdString();
+    return;
+  }
+
+  // Keep the sidecar until the asynchronous temp-wallet save has completed and
+  // replaced the original file. A crash or save failure therefore leaves the
+  // old two-file wallet recoverable.
+  m_pendingYubiKeySidecarRemoval = YubiKeySeedStore::sidecarPath(walletPath);
+  m_pendingYubiKeySidecarData = sidecarData;
+  if (!save(true, true)) {
+    m_logger(Logging::ERROR) << "Could not start the one-file YubiKey wallet migration save";
+  }
+}
+
+void WalletAdapter::removeMigratedYubiKeySidecar() {
+  if (m_pendingYubiKeySidecarRemoval.isEmpty()) {
+    return;
+  }
+
+  const QByteArray embedded = embeddedYubiKeyMetadata();
+  YubiKeySeedMetadata sidecarMetadata;
+  QByteArray currentSidecarData;
+  QString error;
+  const QString walletPath = Settings::instance().getWalletFile();
+  const bool sameSidecar =
+      YubiKeySeedStore::load(walletPath, sidecarMetadata, error) &&
+      YubiKeySeedStore::serialize(sidecarMetadata, currentSidecarData, error) &&
+      currentSidecarData == m_pendingYubiKeySidecarData;
+  if (embedded == m_pendingYubiKeySidecarData && sameSidecar) {
+    if (!QFile::remove(m_pendingYubiKeySidecarRemoval)) {
+      m_logger(Logging::WARNING) << "One-file migration succeeded, but the legacy YubiKey sidecar could not be removed";
+      return;
+    }
+    m_logger(Logging::INFO) << "Migrated YubiKey metadata into the wallet file and removed the legacy sidecar";
+  } else {
+    m_logger(Logging::WARNING) << "Legacy YubiKey sidecar changed during migration and was retained";
+  }
+  m_pendingYubiKeySidecarRemoval.clear();
+  m_pendingYubiKeySidecarData.clear();
+}
+
+bool WalletAdapter::enableYubiKeyProtection(WId _parentWindow,
+                                            const QString& _label,
+                                            const QString& _walletPassword,
+                                            QString& _protectedBackupPath,
+                                            QStringList& _removedBypassFiles,
+                                            QString& _warningText,
+                                            QString& _errorText) {
+  _protectedBackupPath.clear();
+  _removedBypassFiles.clear();
+  _warningText.clear();
+  _errorText.clear();
+  if (m_wallet == nullptr || m_wallet->isTrackingWallet()) {
+    _errorText = tr("Only an open full wallet can enable YubiKey protected spending.");
+    return false;
+  }
+  if (hasYubiKeyMetadata()) {
+    _errorText = tr("This wallet already has YubiKey protection metadata.");
+    return false;
+  }
+
+  const QString label = _label.trimmed();
+  if (label.isEmpty() || label.size() > 64) {
+    _errorText = tr("The YubiKey label must contain between 1 and 64 characters.");
+    return false;
+  }
+
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr) {
+    _errorText = tr("This wallet backend does not support protected spending.");
+    return false;
+  }
+
+  CryptoNote::AccountKeys accountKeys;
+  m_wallet->getAccountKeys(accountKeys);
+  if (accountKeys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
+    _errorText = tr("The open wallet has no spend seed.");
+    return false;
+  }
+  CryptoPQ::SeedMaster seedMaster = CryptoNote::pqSeedMasterFromSpendSecret(accountKeys.spendSecretKey);
+  Tools::SecretLock scrubSeed(seedMaster.data(), seedMaster.size());
+  sodium_memzero(accountKeys.spendSecretKey.data, sizeof(accountKeys.spendSecretKey.data));
+
+  CryptoNote::PqTrackingKeys tracking;
+  if (!wallet->getPqTrackingKeys(tracking)) {
+    _errorText = tr("Could not derive the wallet tracking identity.");
+    return false;
+  }
+  const QByteArray binding = YubiKeySeedStore::walletBinding(
+      QByteArray::fromStdString(CryptoNote::encodePqTrackingKey(tracking)));
+
+  WindowsWebAuthnPrf::Enrollment enrollment;
+  if (!WindowsWebAuthnPrf::enroll(_parentWindow, binding, enrollment, _errorText)) {
+    return false;
+  }
+  Tools::SecretLock scrubPrf(enrollment.prfSecret.data(), enrollment.prfSecret.size());
+
+  YubiKeySeedEnvelope primaryEnvelope;
+  if (!YubiKeySeedStore::seal(seedMaster, label,
+                              enrollment.credentialId, enrollment.prfSalt,
+                              enrollment.prfSecret, binding, primaryEnvelope,
+                              _errorText)) {
+    return false;
+  }
+  YubiKeySeedMetadata metadata;
+  metadata.walletBinding = binding;
+  metadata.keys.append(primaryEnvelope);
+
+  const QString walletPath = Settings::instance().getWalletFile();
+  const QString protectedStage =
+      walletPath + QStringLiteral(".yubikey-new");
+  _protectedBackupPath = walletPath + QStringLiteral(".backup");
+  const QString protectedBackupStage =
+      _protectedBackupPath + QStringLiteral(".yubikey-new");
+  if ((QFile::exists(protectedStage) && !QFile::remove(protectedStage)) ||
+      (QFile::exists(protectedBackupStage) &&
+       !QFile::remove(protectedBackupStage))) {
+    _errorText = tr("Could not remove a stale protected-wallet staging file. Close any program using the wallet folder and retry.");
+    _protectedBackupPath.clear();
+    return false;
+  }
+
+  CryptoPQ::SeedMaster detached{};
+  Tools::SecretLock scrubDetached(detached.data(), detached.size());
+  if (!wallet->detachPqSpendSeed(detached) ||
+      sodium_compare(detached.data(), seedMaster.data(), seedMaster.size()) != 0) {
+    _errorText = tr("The wallet refused to detach its spend seed. The original wallet file was not changed.");
+    _protectedBackupPath.clear();
+    return false;
+  }
+
+  const auto rollback = [&](const QString& message) {
+    QFile::remove(protectedStage);
+    QFile::remove(protectedBackupStage);
+    if (!wallet->restorePqSpendSeed(seedMaster)) {
+      _errorText = message +
+          tr(" The in-memory full wallet could not be restored; close the wallet without saving. The original on-disk wallet was not replaced.");
+    } else {
+      _errorText = message +
+          tr(" The original on-disk wallet was not replaced.");
+    }
+    _protectedBackupPath.clear();
+    return false;
+  };
+
+  QByteArray serializedMetadata;
+  if (!storeEmbeddedYubiKeyMetadata(metadata, _errorText,
+                                    &serializedMetadata)) {
+    return rollback(_errorText);
+  }
+
+  QString stageError;
+  if (!saveAndWait(protectedStage, true, true, true, stageError)) {
+    return rollback(tr("The protected tracking wallet could not be staged: %1")
+                        .arg(stageError));
+  }
+  if (!verifyProtectedWalletSnapshot(
+          protectedStage, _walletPassword, tracking, serializedMetadata,
+          stageError)) {
+    return rollback(tr("The staged protected wallet failed validation: %1")
+                        .arg(stageError));
+  }
+
+  if (!QFile::copy(protectedStage, protectedBackupStage)) {
+    return rollback(tr("Could not stage the protected automatic backup."));
+  }
+  if (!verifyProtectedWalletSnapshot(
+          protectedBackupStage, _walletPassword, tracking,
+          serializedMetadata, stageError)) {
+    return rollback(tr("The staged protected automatic backup failed validation: %1")
+                        .arg(stageError));
+  }
+
+  QString cleanupError;
+  if (!removeYubiKeyBypassFiles(_removedBypassFiles, cleanupError)) {
+    return rollback(cleanupError);
+  }
+
+  // Commit only after both protected copies have been fully written and
+  // reopened. The replacement is atomic on Windows/POSIX; no pre-YubiKey full
+  // wallet is deliberately retained beside the active file.
+  if (!renameFile(protectedStage, walletPath)) {
+    return rollback(tr("The validated protected wallet could not replace the original wallet file."));
+  }
+
+  if (!renameFile(protectedBackupStage, _protectedBackupPath)) {
+    _warningText = tr("The active protected wallet is valid, but its protected automatic backup could not be installed. The validated backup remains at:\n%1")
+        .arg(protectedBackupStage);
+    _protectedBackupPath = protectedBackupStage;
+  }
+  return true;
+}
+
+bool WalletAdapter::addYubiKeyProtectionKey(WId _parentWindow,
+                                             const QString& _label,
+                                             QString& _errorText) {
+  _errorText.clear();
+  if (!isYubiKeyProtected()) {
+    _errorText = tr("This wallet is not in YubiKey protected-spending mode.");
+    return false;
+  }
+
+  YubiKeySeedMetadata metadata;
+  if (!loadYubiKeyMetadata(metadata, _errorText)) {
+    return false;
+  }
+  const QString label = _label.trimmed();
+  if (label.isEmpty() || label.size() > 64) {
+    _errorText = tr("The YubiKey label must contain between 1 and 64 characters.");
+    return false;
+  }
+  for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+    if (envelope.label.compare(label, Qt::CaseInsensitive) == 0) {
+      _errorText = tr("Another enrolled YubiKey already uses that label.");
+      return false;
+    }
+  }
+  if (metadata.keys.size() >= YubiKeySeedStore::MAX_KEY_COUNT) {
+    _errorText = tr("This wallet already has the maximum of %1 enrolled YubiKeys.")
+        .arg(YubiKeySeedStore::MAX_KEY_COUNT);
+    return false;
+  }
+
+  CryptoPQ::SeedMaster seedMaster{};
+  Tools::SecretLock scrubSeed(seedMaster.data(), seedMaster.size());
+  QString authorizingKeyLabel;
+  const QString authorizationPurpose =
+      tr("It will authorize adding the new key \"%1\". The new key will be requested after this authorization step.")
+          .arg(label);
+  if (!unlockYubiKeySeed(_parentWindow, seedMaster, _errorText,
+                         authorizationPurpose, &authorizingKeyLabel)) {
+    return false;
+  }
+
+  QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow()
+                                       : QWidget::find(_parentWindow);
+  // Let Windows Security and its temporary native owner finish closing before
+  // showing the key-switch instruction.
+  QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  if (!isYubiKeyProtected()) {
+    _errorText = tr("The protected wallet was closed before the backup key could be enrolled.");
+    return false;
+  }
+  QMessageBox switchPrompt(
+      QMessageBox::Warning,
+      tr("Insert a different backup YubiKey"),
+      tr("The enrolled YubiKey \"%1\" has authorized this change. Remove it now "
+         "and insert the different physical YubiKey \"%2\" that will serve as "
+         "the backup.\n\n"
+         "The wallet cannot detect whether two credentials were created on the "
+         "same physical key. Using the same key again does not create a backup.\n\n"
+         "Windows Security will ask for the backup key twice: first to create "
+         "its credential, then to verify the PRF secret. Keep the backup key inserted.")
+          .arg(authorizingKeyLabel, label),
+      QMessageBox::NoButton,
+      parent);
+  QPushButton* enrollButton = switchPrompt.addButton(
+      tr("Enroll backup key"), QMessageBox::AcceptRole);
+  switchPrompt.addButton(QMessageBox::Cancel);
+  switchPrompt.setDefaultButton(QMessageBox::Cancel);
+  switchPrompt.exec();
+  if (switchPrompt.clickedButton() != enrollButton) {
+    _errorText.clear();
+    return false;
+  }
+
+  WindowsWebAuthnPrf::Enrollment enrollment;
+  if (!WindowsWebAuthnPrf::enroll(
+          _parentWindow, metadata.walletBinding, enrollment, _errorText)) {
+    return false;
+  }
+  Tools::SecretLock scrubPrf(
+      enrollment.prfSecret.data(), enrollment.prfSecret.size());
+
+  for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+    if (envelope.credentialId == enrollment.credentialId) {
+      _errorText = tr("That WebAuthn credential is already enrolled for this wallet.");
+      return false;
+    }
+  }
+
+  YubiKeySeedEnvelope backupEnvelope;
+  if (!YubiKeySeedStore::seal(seedMaster, label, enrollment.credentialId,
+                              enrollment.prfSalt, enrollment.prfSecret,
+                              metadata.walletBinding, backupEnvelope,
+                              _errorText)) {
+    return false;
+  }
+  metadata.keys.append(backupEnvelope);
+  const QByteArray previousMetadata = embeddedYubiKeyMetadata();
+  if (!storeEmbeddedYubiKeyMetadata(metadata, _errorText)) {
+    return false;
+  }
+  QString saveError;
+  if (!saveAndWait(Settings::instance().getWalletFile() + QStringLiteral(".temp"),
+                   true, true, false, saveError)) {
+    auto* concrete = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+    if (concrete != nullptr) {
+      concrete->setPqProtectedSpendMetadata(previousMetadata.toStdString());
+    }
+    _errorText = tr("The new YubiKey entry could not be saved: %1").arg(saveError);
+    return false;
+  }
+  return true;
+}
+
+bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
+                                      CryptoPQ::SeedMaster& _seedMaster,
+                                      QString& _errorText,
+                                      const QString& _authorizationPurpose,
+                                      QString* _usedKeyLabel) const {
+  const auto totalStarted = std::chrono::steady_clock::now();
+  _errorText.clear();
+  if (!isYubiKeyProtected()) {
+    _errorText = tr("This wallet is not in YubiKey protected-spending mode.");
+    return false;
+  }
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr) {
+    _errorText = tr("This wallet backend does not support protected spending.");
+    return false;
+  }
+
+  YubiKeySeedMetadata metadata;
+  if (!loadYubiKeyMetadata(metadata, _errorText)) {
+    return false;
+  }
+  CryptoNote::PqTrackingKeys tracking;
+  if (!wallet->getPqTrackingKeys(tracking)) {
+    _errorText = tr("The open wallet has no tracking identity.");
+    return false;
+  }
+  const QByteArray currentBinding = YubiKeySeedStore::walletBinding(
+      QByteArray::fromStdString(CryptoNote::encodePqTrackingKey(tracking)));
+  if (currentBinding != metadata.walletBinding) {
+    _errorText = tr("The embedded YubiKey metadata belongs to a different wallet.");
+    return false;
+  }
+
+  QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow()
+                                       : QWidget::find(_parentWindow);
+  int selectedIndex = 0;
+  const auto selectionStarted = std::chrono::steady_clock::now();
+  if (metadata.keys.size() > 1) {
+    QStringList choices;
+    choices.reserve(metadata.keys.size());
+    for (const YubiKeySeedEnvelope& envelope : metadata.keys) {
+      choices.append(tr("%1 [%2]").arg(
+          envelope.label, YubiKeySeedStore::keyFingerprint(envelope)));
+    }
+    bool accepted = false;
+    const QString selected = QInputDialog::getItem(
+        parent, tr("Select YubiKey"), tr("Security key:"), choices,
+        0, false, &accepted);
+    if (!accepted) {
+      _errorText = tr("YubiKey selection was cancelled.");
+      return false;
+    }
+    selectedIndex = choices.indexOf(selected);
+    if (selectedIndex < 0 || selectedIndex >= metadata.keys.size()) {
+      _errorText = tr("The selected YubiKey entry is invalid.");
+      return false;
+    }
+  }
+  const auto selectionFinished = std::chrono::steady_clock::now();
+  const YubiKeySeedEnvelope& selectedKey = metadata.keys.at(selectedIndex);
+  if (!_authorizationPurpose.isEmpty()) {
+    QMessageBox authorizationPrompt(
+        QMessageBox::Information,
+        tr("Authorize with an enrolled YubiKey"),
+        tr("Insert the already-enrolled YubiKey \"%1\" now.\n\n%2")
+            .arg(selectedKey.label, _authorizationPurpose),
+        QMessageBox::NoButton,
+        parent);
+    QPushButton* authorizeButton = authorizationPrompt.addButton(
+        tr("Authorize with this key"), QMessageBox::AcceptRole);
+    authorizationPrompt.addButton(QMessageBox::Cancel);
+    authorizationPrompt.setDefaultButton(authorizeButton);
+    authorizationPrompt.exec();
+    if (authorizationPrompt.clickedButton() != authorizeButton) {
+      _errorText.clear();
+      return false;
+    }
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+  }
+
+  QByteArray prfSecret;
+  const auto webAuthnStarted = std::chrono::steady_clock::now();
+  const bool authorized = WindowsWebAuthnPrf::unlock(
+      _parentWindow, selectedKey.credentialId, selectedKey.prfSalt,
+      prfSecret, _errorText);
+  const auto webAuthnFinished = std::chrono::steady_clock::now();
+  if (!authorized) {
+    return false;
+  }
+  Tools::SecretLock scrubPrf(prfSecret.data(), prfSecret.size());
+  const auto unsealStarted = std::chrono::steady_clock::now();
+  if (!YubiKeySeedStore::unseal(selectedKey, metadata.walletBinding,
+                                prfSecret, _seedMaster, _errorText)) {
+    return false;
+  }
+  const auto unsealFinished = std::chrono::steady_clock::now();
+  const bool seedMatches = CryptoNote::pqTrackingKeysMatchSeed(tracking, _seedMaster);
+  const auto verificationFinished = std::chrono::steady_clock::now();
+
+  const auto milliseconds = [](auto from, auto to) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(to - from).count();
+  };
+  m_logger(Logging::INFO)
+      << "YubiKey unlock timing: precheck="
+      << milliseconds(totalStarted, selectionStarted)
+      << "ms, selection=" << milliseconds(selectionStarted, selectionFinished)
+      << "ms, webauthn=" << milliseconds(webAuthnStarted, webAuthnFinished)
+      << "ms, decrypt=" << milliseconds(unsealStarted, unsealFinished)
+      << "ms, seed-check=" << milliseconds(unsealFinished, verificationFinished)
+      << "ms, total=" << milliseconds(totalStarted, verificationFinished) << "ms";
+
+  if (!seedMatches) {
+    sodium_memzero(_seedMaster.data(), _seedMaster.size());
+    _errorText = tr("The decrypted seed does not match the open wallet.");
+    return false;
+  }
+  if (_usedKeyLabel != nullptr) {
+    *_usedKeyLabel = selectedKey.label;
+  }
+  return true;
 }
 
 void WalletAdapter::close() {
@@ -284,10 +858,23 @@ bool WalletAdapter::save(const QString& _file, bool _details, bool _cache,
                          bool _waitForFile) {
   Q_CHECK_PTR(m_wallet);
   if (openFile(_file, false, _waitForFile)) {
+                         quint64* _saveGeneration, bool _backupMode) {
+  Q_CHECK_PTR(m_wallet);
+  if (openFile(_file, false)) {
+    // Set the mode only after acquiring m_file's mutex. A preceding async save
+    // may still own the stream; changing this flag while waiting would make
+    // that preceding completion follow the wrong rename/backup path.
+    m_isBackupInProgress = _backupMode;
+    const quint64 generation = m_saveGeneration.fetch_add(1) + 1;
+    m_activeSaveGeneration.store(generation);
+    if (_saveGeneration != nullptr) {
+      *_saveGeneration = generation;
+    }
     Q_EMIT walletStateChangedSignal(tr("Saving data"));
     try {
       m_wallet->save(m_file, _details, _cache);
     } catch (std::system_error&) {
+      m_isBackupInProgress = false;
       closeFile();
       return false;
     }
@@ -298,10 +885,88 @@ bool WalletAdapter::save(const QString& _file, bool _details, bool _cache,
   return true;
 }
 
-void WalletAdapter::backup(const QString& _file) {
-  if (save(_file.endsWith(".wallet") ? _file : _file + ".wallet", true, false)) {
-    m_isBackupInProgress = true;
+bool WalletAdapter::saveAndWait(const QString& _file, bool _details, bool _cache,
+                                bool _backupMode, QString& _errorText) {
+  _errorText.clear();
+  QEventLoop waitLoop;
+  quint64 expectedGeneration = 0;
+  int completedError = 0;
+  QString completedErrorText;
+  bool completed = false;
+  const QMetaObject::Connection completionConnection = connect(
+      this, &WalletAdapter::walletSaveCompletedGenerationSignal,
+      &waitLoop,
+      [&](quint64 generation, int error, const QString& errorText) {
+        if (generation != expectedGeneration) {
+          return;
+        }
+        completedError = error;
+        completedErrorText = errorText;
+        completed = true;
+        waitLoop.quit();
+      },
+      Qt::QueuedConnection);
+
+  if (!save(_file, _details, _cache, &expectedGeneration, _backupMode)) {
+    disconnect(completionConnection);
+    _errorText = tr("the wallet could not start the save operation");
+    return false;
   }
+  if (!completed) {
+    waitLoop.exec(QEventLoop::ExcludeUserInputEvents);
+  }
+  disconnect(completionConnection);
+
+  if (completedError != 0) {
+    _errorText = completedErrorText.isEmpty()
+        ? tr("wallet save failed with error code %1").arg(completedError)
+        : completedErrorText;
+    return false;
+  }
+  return true;
+}
+
+bool WalletAdapter::verifyProtectedWalletSnapshot(
+    const QString& _file, const QString& _password,
+    const CryptoNote::PqTrackingKeys& _expectedTracking,
+    const QByteArray& _expectedMetadata, QString& _errorText) {
+  _errorText.clear();
+  if (!openFile(_file, true)) {
+    _errorText = tr("the wallet snapshot could not be reopened");
+    return false;
+  }
+
+  CryptoNote::WalletSnapshotInfo snapshot;
+  std::string inspectionError;
+  std::string password = _password.toStdString();
+  const bool inspected = CryptoNote::WalletLegacy::inspectWalletSnapshot(
+      m_file, password, snapshot, inspectionError);
+  if (!password.empty()) {
+    sodium_memzero(password.data(), password.size());
+  }
+  closeFile();
+
+  if (!inspected) {
+    _errorText = inspectionError.empty()
+        ? tr("the snapshot did not pass its password and integrity checks")
+        : QString::fromLocal8Bit(inspectionError.c_str());
+    return false;
+  }
+  if (snapshot.serializationVersion !=
+          CryptoNote::WalletLegacySerializer::PROTECTED_SPEND_VERSION ||
+      !snapshot.isTracking || !snapshot.hasPqTrackingKeys ||
+      CryptoNote::encodePqTrackingKey(snapshot.pqTrackingKeys) !=
+          CryptoNote::encodePqTrackingKey(_expectedTracking) ||
+      snapshot.protectedSpendMetadata != _expectedMetadata.toStdString()) {
+    _errorText = tr("the snapshot is not the expected self-contained protected tracking wallet");
+    return false;
+  }
+  return true;
+}
+
+void WalletAdapter::backup(const QString& _file) {
+  const QString target = _file.endsWith(".wallet") ? _file : _file + ".wallet";
+  save(target, true, false, nullptr, true);
 }
 
 void WalletAdapter::autoBackup(){
@@ -309,9 +974,7 @@ void WalletAdapter::autoBackup(){
   source.append(QString(".backup"));
 
   if (!source.isEmpty() && !QFile::exists(source)) {
-    if (save(source, true, false)) {
-      m_isBackupInProgress = true;
-    }
+    save(source, true, false, nullptr, true);
   }
 }
 
@@ -494,6 +1157,20 @@ std::vector<CryptoNote::TransactionSpentOutputInformation> WalletAdapter::getSpe
 }
 
 void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee) {
+  sendTransactionImpl(nullptr, _transfers, _fee);
+}
+
+void WalletAdapter::sendTransactionWithSeed(
+    const CryptoPQ::SeedMaster& _seedMaster,
+    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+    quint64 _fee) {
+  sendTransactionImpl(&_seedMaster, _transfers, _fee);
+}
+
+void WalletAdapter::sendTransactionImpl(
+    const CryptoPQ::SeedMaster* _seedMaster,
+    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+    quint64 _fee) {
   Q_CHECK_PTR(m_wallet);
   try {
     lock();
@@ -502,7 +1179,15 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
     // inside WalletLegacy::sendTransaction itself (see Wallet/PqRecipient.h);
     // the GUI does not need to pre-resolve it. Mixin and payment IDs no longer
     // exist in the PQ design, so both trailing parameters stay at 0.
-    m_wallet->sendTransaction(_transfers, _fee, "", 0, 0);
+    if (_seedMaster != nullptr) {
+      auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+      if (wallet == nullptr) {
+        throw std::runtime_error("protected spending requires WalletLegacy");
+      }
+      wallet->sendTransactionWithSeed(*_seedMaster, _transfers, _fee, "", 0, 0);
+    } else {
+      m_wallet->sendTransaction(_transfers, _fee, "", 0, 0);
+    }
   } catch (const CryptoNote::PqSendError& _error) {
     int code = CryptoNote::error::INTERNAL_WALLET_ERROR;
     switch (_error.code) {
@@ -554,6 +1239,20 @@ void WalletAdapter::sendTransaction(const std::vector<CryptoNote::WalletLegacyTr
 QString WalletAdapter::prepareRawTransaction(
     const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
     quint64 _fee, QString* _errorText) {
+  return prepareRawTransactionImpl(nullptr, _transfers, _fee, _errorText);
+}
+
+QString WalletAdapter::prepareRawTransactionWithSeed(
+    const CryptoPQ::SeedMaster& _seedMaster,
+    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+    quint64 _fee, QString* _errorText) {
+  return prepareRawTransactionImpl(&_seedMaster, _transfers, _fee, _errorText);
+}
+
+QString WalletAdapter::prepareRawTransactionImpl(
+    const CryptoPQ::SeedMaster* _seedMaster,
+    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+    quint64 _fee, QString* _errorText) {
   Q_CHECK_PTR(m_wallet);
   if (_errorText != nullptr) {
     _errorText->clear();
@@ -563,8 +1262,17 @@ QString WalletAdapter::prepareRawTransaction(
   Q_EMIT walletStateChangedSignal(tr("Preparing transaction"));
   try {
     CryptoNote::TransactionId transactionId = CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID;
-    const std::string raw = m_wallet->prepareRawTransaction(
-        transactionId, _transfers, _fee, "", 0, 0);
+    std::string raw;
+    if (_seedMaster != nullptr) {
+      auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+      if (wallet == nullptr) {
+        throw std::runtime_error("protected spending requires WalletLegacy");
+      }
+      raw = wallet->prepareRawTransactionWithSeed(
+          *_seedMaster, transactionId, _transfers, _fee, "", 0, 0);
+    } else {
+      raw = m_wallet->prepareRawTransaction(transactionId, _transfers, _fee, "", 0, 0);
+    }
     unlock();
     Q_EMIT updateBlockStatusTextWithDelaySignal();
     return QString::fromStdString(raw);
@@ -594,6 +1302,15 @@ QString WalletAdapter::prepareRawTransaction(
 }
 
 bool WalletAdapter::getOwnPqIdentityHex(QString& _viewPubHex, QString& _spendPubHex) const {
+  if (auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet)) {
+    CryptoNote::PqTrackingKeys tracking;
+    if (wallet->getPqTrackingKeys(tracking)) {
+      _viewPubHex = QString::fromStdString(Common::toHex(tracking.viewPub.data(), tracking.viewPub.size()));
+      _spendPubHex = QString::fromStdString(Common::toHex(tracking.spendPub.data(), tracking.spendPub.size()));
+      return true;
+    }
+  }
+
   CryptoNote::AccountKeys keys;
   if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys)) {
     return false;
@@ -608,6 +1325,12 @@ bool WalletAdapter::getOwnPqIdentityHex(QString& _viewPubHex, QString& _spendPub
 bool WalletAdapter::getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const {
   CryptoNote::AccountKeys keys;
   if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys)) {
+    return false;
+  }
+  // Protected-spending wallets deliberately never release the seed to the
+  // long-running miner. That would keep spend authority in RAM indefinitely
+  // and defeat the protection model.
+  if (keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
     return false;
   }
 
@@ -771,9 +1494,7 @@ bool WalletAdapter::changePassword(const QString& _oldPassword, const QString& _
       QFile::remove(source);
     }
     // create new encrypted backup
-    if (save(source, true, false)) {
-      m_isBackupInProgress = true;
-    }
+    save(source, true, false, nullptr, true);
   }
 
   return save(true, true);
@@ -855,6 +1576,7 @@ void WalletAdapter::stopWalletRpc() {
 void WalletAdapter::onWalletInitCompleted(int _error, const QString& _errorText) {
   switch(_error) {
   case 0: {
+    migrateLegacyYubiKeySidecar();
     Q_EMIT walletActualBalanceUpdatedSignal(m_wallet->actualBalance());
     Q_EMIT walletPendingBalanceUpdatedSignal(m_wallet->pendingBalance());
     Q_EMIT updateWalletAddressSignal(QString::fromStdString(m_wallet->getAddress()));
@@ -886,19 +1608,29 @@ void WalletAdapter::onWalletInitCompleted(int _error, const QString& _errorText)
 }
 
 void WalletAdapter::saveCompleted(std::error_code _error) {
-  if (!_error && !m_isBackupInProgress) {
+  const quint64 saveGeneration = m_activeSaveGeneration.load();
+  const bool backupInProgress = m_isBackupInProgress.exchange(false);
+  std::error_code result = _error;
+  if (!_error && !backupInProgress) {
     closeFile();
-    renameFile(Settings::instance().getWalletFile() + ".temp", Settings::instance().getWalletFile());
-    Q_EMIT walletStateChangedSignal(tr("Ready"));
-    Q_EMIT updateBlockStatusTextWithDelaySignal();
-  } else if (m_isBackupInProgress) {
-    m_isBackupInProgress = false;
+    if (renameFile(Settings::instance().getWalletFile() + ".temp",
+                   Settings::instance().getWalletFile())) {
+      removeMigratedYubiKeySidecar();
+      Q_EMIT walletStateChangedSignal(tr("Ready"));
+      Q_EMIT updateBlockStatusTextWithDelaySignal();
+    } else {
+      m_logger(Logging::ERROR) << "Wallet temp file could not replace the destination";
+      result = std::make_error_code(std::errc::io_error);
+    }
+  } else if (backupInProgress) {
     closeFile();
   } else {
     closeFile();
   }
 
-  Q_EMIT walletSaveCompletedSignal(_error.value(), QString::fromStdString(_error.message()));
+  Q_EMIT walletSaveCompletedGenerationSignal(
+      saveGeneration, result.value(), QString::fromStdString(result.message()));
+  Q_EMIT walletSaveCompletedSignal(result.value(), QString::fromStdString(result.message()));
 }
 
 void WalletAdapter::synchronizationProgressUpdated(uint32_t _current, uint32_t _total) {
@@ -1097,10 +1829,8 @@ void WalletAdapter::notifyAboutLastTransaction() {
   }
 }
 
-void WalletAdapter::renameFile(const QString& _oldName, const QString& _newName) {
-  Q_ASSERT(QFile::exists(_oldName));
-  QFile::remove(_newName);
-  QFile::rename(_oldName, _newName);
+bool WalletAdapter::renameFile(const QString& _oldName, const QString& _newName) {
+  return YubiKeyWalletFiles::replaceFileAtomically(_oldName, _newName);
 }
 
 void WalletAdapter::updateBlockStatusText() {
@@ -1134,7 +1864,26 @@ bool WalletAdapter::isTrackingWallet() const {
   return false;
 }
 
-QString WalletAdapter::getMnemonicSeed(QString _language) const {
+QString WalletAdapter::getMnemonicSeed(QString _language, WId _parentWindow) const {
+  Q_UNUSED(_language);
+  if (isYubiKeyProtected()) {
+    CryptoPQ::SeedMaster seed{};
+    Tools::SecretLock scrub(seed.data(), seed.size());
+    QString error;
+    QWidget* parent = _parentWindow == 0 ? QApplication::activeWindow() : QWidget::find(_parentWindow);
+    const WId parentWindow = _parentWindow != 0 ? _parentWindow : (parent == nullptr ? 0 : parent->winId());
+    if (!unlockYubiKeySeed(parentWindow, seed, error)) {
+      QMessageBox::critical(parent, tr("Failed to reveal spend seed"), error, QMessageBox::Ok);
+      return QString();
+    }
+    Crypto::SecretKey secret{};
+    Tools::SecretLock scrubSecret(secret.data, sizeof(secret.data));
+    std::copy(seed.begin(), seed.end(), secret.data);
+    std::string words;
+    std::string language = "English";
+    Crypto::ElectrumWords::bytes_to_words(secret, words, language);
+    return QString::fromStdString(words);
+  }
   if (isTrackingWallet()) {
     return "Wallet is watch-only and has no seed";
   }
@@ -1158,6 +1907,20 @@ CryptoNote::AccountKeys WalletAdapter::getKeysFromMnemonicSeed(QString& _seed) c
 
 QString WalletAdapter::signMessage(const QString &data) {
   Q_CHECK_PTR(m_wallet);
+  if (isYubiKeyProtected()) {
+    CryptoPQ::SeedMaster seed{};
+    Tools::SecretLock scrub(seed.data(), seed.size());
+    QString error;
+    QWidget* parent = QApplication::activeWindow();
+    if (!unlockYubiKeySeed(parent == nullptr ? 0 : parent->winId(), seed, error)) {
+      QMessageBox::critical(nullptr, tr("Failed to sign message"), error, QMessageBox::Ok);
+      return QString();
+    }
+    auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+    if (wallet == nullptr) return QString();
+    const std::string signature = wallet->signMessageWithSeed(seed, data.toStdString());
+    return QString::fromUtf8(signature.data(), signature.size());
+  }
   if (isTrackingWallet()) {
     QMessageBox::critical(nullptr, tr("Failed to sign message"), tr("This is a watch-only wallet. The message can be signed only by a full wallet."), QMessageBox::Ok);
     return QString();
@@ -1165,6 +1928,29 @@ QString WalletAdapter::signMessage(const QString &data) {
 
   std::string sig_str = m_wallet->sign_message(data.toStdString());
   return QString::fromUtf8(sig_str.data(), sig_str.size());
+}
+
+QString WalletAdapter::getSpendSeedHex() const {
+  Q_CHECK_PTR(m_wallet);
+  if (isYubiKeyProtected()) {
+    CryptoPQ::SeedMaster seed{};
+    Tools::SecretLock scrub(seed.data(), seed.size());
+    QString error;
+    QWidget* parent = QApplication::activeWindow();
+    if (!unlockYubiKeySeed(parent == nullptr ? 0 : parent->winId(), seed, error)) {
+      QMessageBox::critical(parent, tr("Failed to reveal spend seed"), error, QMessageBox::Ok);
+      return QString();
+    }
+    return QString::fromStdString(Common::toHex(seed.data(), seed.size()));
+  }
+
+  CryptoNote::AccountKeys keys;
+  if (!const_cast<WalletAdapter*>(this)->getAccountKeys(keys) ||
+      keys.spendSecretKey == CryptoNote::NULL_SECRET_KEY) {
+    return QString();
+  }
+  Tools::SecretLock scrub(keys.spendSecretKey.data, sizeof(keys.spendSecretKey.data));
+  return QString::fromStdString(Common::podToHex(keys.spendSecretKey));
 }
 
 bool WalletAdapter::verifyMessage(const QString &data, const QString &_destination, const QString &signature) {

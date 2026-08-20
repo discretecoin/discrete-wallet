@@ -21,6 +21,8 @@ SignMessageDialog::SignMessageDialog(QWidget* _parent) : QDialog(_parent), m_ui(
   m_ui->setupUi(this);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletInitCompletedSignal, this, &SignMessageDialog::walletOpened, Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &SignMessageDialog::walletClosed, Qt::QueuedConnection);
+  connect(m_ui->m_messageEdit, &QTextEdit::textChanged,
+          m_ui->m_signatureEdit, &QTextEdit::clear);
   m_ui->m_verificationResult->setText("");
 }
 
@@ -52,6 +54,10 @@ void SignMessageDialog::walletClosed() {
 void SignMessageDialog::messageChanged() {
   if (m_ui->m_tabWidget->currentIndex() != 0) { return; }
   QString message = m_ui->m_messageEdit->toPlainText().toUtf8();
+  if (message.isEmpty()) {
+    m_ui->m_signatureEdit->clear();
+    return;
+  }
   QString sig = WalletAdapter::instance().signMessage(message);
   m_ui->m_signatureEdit->setText(sig);
 }

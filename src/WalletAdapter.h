@@ -6,11 +6,14 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QMutex>
 #include <QObject>
 #include <QTime>
 #include <QTimer>
 #include <QPushButton>
+#include <QStringList>
+#include <QtGui/qwindowdefs.h>
 
 #include <list>
 #include <vector>
@@ -32,6 +35,7 @@
 namespace WalletGui {
 
 class ITransfersContainer;
+struct YubiKeySeedMetadata;
 
 class WalletAdapter : public QObject, public CryptoNote::IWalletLegacyObserver {
   Q_OBJECT
@@ -74,8 +78,14 @@ public:
   std::vector<CryptoNote::TransactionSpentOutputInformation> getSpentOutputs();
 
   void sendTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers, quint64 _fee);
+  void sendTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
+                               const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                               quint64 _fee);
   QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                 quint64 _fee, QString* _errorText = nullptr);
+  QString prepareRawTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
+                                        const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                                        quint64 _fee, QString* _errorText = nullptr);
 
   enum class AccountRegistrationMode {
     Free,
@@ -97,11 +107,30 @@ public:
   bool getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const;
 
   bool isOpen() const;
+  bool hasYubiKeyMetadata() const;
+  bool isYubiKeyProtected() const;
+  int yubiKeyCount() const;
+  QStringList yubiKeyBypassFiles() const;
+  bool removeYubiKeyBypassFiles(QStringList& _removedFiles,
+                                QString& _errorText);
+  bool enableYubiKeyProtection(WId _parentWindow, const QString& _label,
+                               const QString& _walletPassword,
+                               QString& _protectedBackupPath,
+                               QStringList& _removedBypassFiles,
+                               QString& _warningText,
+                               QString& _errorText);
+  bool addYubiKeyProtectionKey(WId _parentWindow, const QString& _label,
+                              QString& _errorText);
+  bool unlockYubiKeySeed(WId _parentWindow, CryptoPQ::SeedMaster& _seedMaster,
+                        QString& _errorText,
+                        const QString& _authorizationPurpose = QString(),
+                        QString* _usedKeyLabel = nullptr) const;
 
   bool changePassword(const QString& _old_pass, const QString& _new_pass);
   void setWalletFile(const QString& _path);
 
   QString signMessage(const QString &data);
+  QString getSpendSeedHex() const;
   // _destination accepts either a raw bech32m PQ address or an account number
   // (H-I-A-C / H-I-A-T-C); it is resolved to a spend public key the same way the
   // send path resolves a destination (see PqRecipient.h).
@@ -118,7 +147,7 @@ public:
   void transactionUpdated(CryptoNote::TransactionId _transaction_id) Q_DECL_OVERRIDE;
 
   bool isTrackingWallet() const;
-  QString getMnemonicSeed(QString _language) const;
+  QString getMnemonicSeed(QString _language, WId _parentWindow = 0) const;
   CryptoNote::AccountKeys getKeysFromMnemonicSeed(QString& _seed) const;
   bool tryOpen(const QString& _password);
 
@@ -132,6 +161,8 @@ private:
   std::atomic<bool> m_isResetInProgress;
   QMetaObject::Connection m_resetSaveConnection;
   std::thread m_resetWorker;
+  std::atomic<quint64> m_saveGeneration;
+  std::atomic<quint64> m_activeSaveGeneration;
   std::atomic<bool> m_isSynchronized;
   std::atomic<quint64> m_lastWalletTransactionId;
   QTimer m_newTransactionsNotificationTimer;
@@ -142,6 +173,8 @@ private:
   uint32_t m_syncPeriod;
   struct PerfType { uint32_t height; QTime time; };
   std::vector<PerfType> m_perfData;
+  QString m_pendingYubiKeySidecarRemoval;
+  QByteArray m_pendingYubiKeySidecarData;
 
   boost::program_options::variables_map m_wrpcOptions;
 
@@ -153,6 +186,21 @@ private:
 
   bool save(const QString& _file, bool _details, bool _cache,
             bool _waitForFile = true);
+            quint64* _saveGeneration = nullptr, bool _backupMode = false);
+  bool saveAndWait(const QString& _file, bool _details, bool _cache,
+                   bool _backupMode, QString& _errorText);
+  bool verifyProtectedWalletSnapshot(
+      const QString& _file, const QString& _password,
+      const CryptoNote::PqTrackingKeys& _expectedTracking,
+      const QByteArray& _expectedMetadata, QString& _errorText);
+  bool loadYubiKeyMetadata(YubiKeySeedMetadata& _metadata,
+                           QString& _errorText) const;
+  bool storeEmbeddedYubiKeyMetadata(const YubiKeySeedMetadata& _metadata,
+                                    QString& _errorText,
+                                    QByteArray* _serialized = nullptr);
+  QByteArray embeddedYubiKeyMetadata() const;
+  void migrateLegacyYubiKeySidecar();
+  void removeMigratedYubiKeySidecar();
   void lock();
   void unlock();
   bool openFile(const QString& _file, bool _read_only,
@@ -165,8 +213,14 @@ private:
   void runWalletRpc();
   void stopWalletRpc();
   void doRegisterAccountNumber(AccountRegistrationMode _mode);
+  void sendTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
+                           const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                           quint64 _fee);
+  QString prepareRawTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
+                                    const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
+                                    quint64 _fee, QString* _errorText);
 
-  static void renameFile(const QString& _old_name, const QString& _new_name);
+  static bool renameFile(const QString& _old_name, const QString& _new_name);
   Q_SLOT void updateBlockStatusText();
   Q_SLOT void updateBlockStatusTextWithDelay();
 
@@ -175,6 +229,8 @@ Q_SIGNALS:
   void walletCloseCompletedSignal();
   void walletSaveCompletedSignal(int _error, const QString& _error_text);
   void walletResetCompletedSignal(int _error, const QString& _error_text);
+  void walletSaveCompletedGenerationSignal(quint64 _generation, int _error,
+                                           const QString& _error_text);
   void walletSynchronizationProgressUpdatedSignal(quint64 _current, quint64 _total);
   void walletSynchronizationCompletedSignal(int _error, const QString& _error_text);
   void walletActualBalanceUpdatedSignal(quint64 _actual_balance);

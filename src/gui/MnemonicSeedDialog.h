@@ -15,12 +15,14 @@ class MnemonicSeedDialog : public QDialog {
 
 public:
     MnemonicSeedDialog(QWidget * _parent);
+    void setProtectedMnemonicSeed(const QString& _mnemonicSeed);
     void walletOpened();
     void walletClosed();
     ~MnemonicSeedDialog();
 
 private:
     QScopedPointer<Ui::MnemonicSeedDialog> m_ui;
+    bool m_hasProtectedMnemonicSeed = false;
 
     void initLanguages();
 
