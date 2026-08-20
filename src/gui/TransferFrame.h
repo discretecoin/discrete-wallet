@@ -24,6 +24,7 @@ public:
   QString getLabel() const;
   qreal getAmount() const;
   QString getAmountString() const;
+  quint64 getMaximumAmount() const;
 
   void disableRemoveButton(bool _disable);
   void setAddress(QString _address);

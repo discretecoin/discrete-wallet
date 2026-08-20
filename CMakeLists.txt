@@ -42,6 +42,34 @@ endif()
 
 project(${WALLET_NAME})
 
+# ---------------------------------------------------------------------------
+# Parallel compilation (MSVC)
+#
+# cl.exe compiles one .cpp at a time per project unless /MP is passed, and the
+# project graph here is almost entirely serial (liboqs -> cryptonote ->
+# DiscreteWallet), so msbuild's own -m switch parallelizes almost nothing: the
+# cryptonote lib alone is ~200 translation units built single-threaded. /MP
+# fans those out across all cores.
+#
+# Set here, right after project() (the first point where MSVC is known), so it
+# lands in CMAKE_{C,CXX}_FLAGS *before* the FetchContent/add_subdirectory calls
+# below and is therefore inherited by the vendored subprojects too (Qlementine,
+# miniupnpc, chacha20poly1305, and liboqs -- which only ever appends to these
+# flags via add_compile_options, so /MP survives there).
+# ---------------------------------------------------------------------------
+set(DISCRETE_COMPILE_JOBS "0" CACHE STRING
+    "MSVC parallel compile processes (/MP); 0 = one per logical core")
+if (MSVC)
+  if (DISCRETE_COMPILE_JOBS GREATER 0)
+    set(DISCRETE_MP_FLAG "/MP${DISCRETE_COMPILE_JOBS}")
+  else()
+    set(DISCRETE_MP_FLAG "/MP")
+  endif()
+  string(APPEND CMAKE_C_FLAGS " ${DISCRETE_MP_FLAG}")
+  string(APPEND CMAKE_CXX_FLAGS " ${DISCRETE_MP_FLAG}")
+  message(STATUS "MSVC parallel compilation: ${DISCRETE_MP_FLAG}")
+endif()
+
 execute_process(COMMAND git log -1 --pretty=format:%h
 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 OUTPUT_VARIABLE GIT_REVISION)
@@ -104,7 +132,7 @@ if (OPENSSL_FOUND)
     message(STATUS "OpenSSL Found: ${OPENSSL_INCLUDE_DIR}")
     message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
 else ()
-    message(STATUS "OpenSSL Found: No... Skipping...")
+    message(FATAL_ERROR "OpenSSL is required for authenticated wallet and YubiKey seed protection")
 endif ()
 
 set(Boost_NO_BOOST_CMAKE ON)
@@ -383,7 +411,9 @@ if (WIN32)
   endif ()
   add_definitions(/D_CRT_SECURE_NO_WARNINGS /D_WIN32_WINNT=0x0601 /DSTATICLIB)
   include_directories(cryptonote/src/platform/msc)
-  set( CMAKE_CXX_FLAGS "-bigobj -EHsc")
+  # NB: this replaces CMAKE_CXX_FLAGS wholesale, so ${DISCRETE_MP_FLAG} has to
+  # be carried over explicitly or the targets below lose parallel compilation.
+  set( CMAKE_CXX_FLAGS "-bigobj -EHsc ${DISCRETE_MP_FLAG}")
   set(PLATFORM_DIR Windows)
   set(BUILD_PLATFORM WIN32)
   set(BUILD_RESOURCES src/cryptonotewallet.rc)
@@ -560,6 +590,12 @@ target_include_directories(${CRYPTONOTE_LIB} PRIVATE ${DISCRETE_OQS_INCLUDE_DIR}
 add_library(Mnemonics ${Mnemonics})
 set_target_properties(${CRYPTONOTE_LIB} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
 
+# CMAKE_AUTOMOC is ON globally for the Qt GUI, but neither of these targets
+# contains a single Q_OBJECT -- the automoc pass over their ~200 sources and
+# headers is pure overhead, and it gates compilation of the whole lib. (The
+# GUI target and QCustomPlot do need it, so it stays on there.)
+set_target_properties(${CRYPTONOTE_LIB} Mnemonics PROPERTIES AUTOMOC OFF)
+
 if (APPLE OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 target_link_libraries(${CRYPTONOTE_LIB} ${Boost_LIBRARIES} lmdb oqs chacha20poly1305 upnpc-static -lresolv)
 else ()
@@ -588,7 +624,7 @@ if (OPENSSL_FOUND)
   add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
   target_link_libraries(${PROJECT_NAME} ${OPENSSL_LIBRARIES})
   if (MSVC)
-    target_link_libraries(${PROJECT_NAME} Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
+    target_link_libraries(${PROJECT_NAME} Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32 webauthn)
   endif()
 endif ()
 
@@ -612,6 +648,26 @@ endif (APPLE)
 
 #qt5_use_modules(${PROJECT_NAME} Core Widgets Gui Network PrintSupport)
 target_link_libraries(${PROJECT_NAME} Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Network Qt6::PrintSupport Qt6::Svg)
+
+include(CTest)
+if (BUILD_TESTING)
+  add_executable(YubiKeySeedStoreTests
+    tests/YubiKeySeedStoreTests.cpp
+    src/security/YubiKeySeedStore.cpp
+    src/security/YubiKeyWalletFiles.cpp
+  )
+  target_include_directories(YubiKeySeedStoreTests PRIVATE src cryptonote/src ${OPENSSL_INCLUDE_DIR})
+  target_link_libraries(YubiKeySeedStoreTests Qt6::Core ${OPENSSL_LIBRARIES})
+  add_test(NAME YubiKeySeedStoreTests COMMAND YubiKeySeedStoreTests)
+  if (WIN32)
+    add_executable(WebAuthnPrfSmoke EXCLUDE_FROM_ALL
+      tests/WebAuthnPrfSmoke.cpp
+      src/security/WindowsWebAuthnPrf.cpp
+    )
+    target_include_directories(WebAuthnPrfSmoke PRIVATE src ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(WebAuthnPrfSmoke Qt6::Core Qt6::Gui Qt6::Widgets ${OPENSSL_LIBRARIES} webauthn)
+  endif()
+endif()
 
 # Installation
 

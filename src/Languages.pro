@@ -47,6 +47,7 @@ gui/AccountFrame.cpp \
 gui/ReceiveFrame.cpp \
 gui/RecentTransactionsModel.cpp \
 gui/SendFrame.cpp \
+gui/ShowPaymentRequestDialog.cpp \
 gui/SortedTransactionsModel.cpp \
 gui/TransactionDetailsDialog.cpp \
 gui/TransactionFrame.cpp \
@@ -115,6 +116,7 @@ gui/AccountFrame.h \
 gui/ReceiveFrame.h \
 gui/RecentTransactionsModel.h \
 gui/SendFrame.h \
+gui/ShowPaymentRequestDialog.h \
 gui/SortedTransactionsModel.h \
 gui/TransactionDetailsDialog.h \
 gui/TransactionFrame.h \
@@ -207,4 +209,4 @@ TRANSLATIONS = 	languages/uk.ts \
 				languages/ko.ts \
 				languages/zh.ts \
 				languages/hi.ts \
-				languages/ar.ts \
+				languages/ar.ts

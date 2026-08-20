@@ -101,31 +101,54 @@
     </widget>
    </item>
    <item row="2" column="1">
-    <widget class="QDoubleSpinBox" name="m_amountSpin">
-     <property name="font">
-      <font>
-       <pointsize>12</pointsize>
-      </font>
+    <layout class="QHBoxLayout" name="amountLayout">
+     <property name="spacing">
+      <number>6</number>
      </property>
-     <property name="cursor">
-      <cursorShape>IBeamCursor</cursorShape>
+     <property name="leftMargin">
+      <number>0</number>
      </property>
-     <property name="layoutDirection">
-      <enum>Qt::LeftToRight</enum>
+     <property name="topMargin">
+      <number>0</number>
      </property>
-     <property name="locale">
-      <locale language="English" country="UnitedStates"/>
+     <property name="rightMargin">
+      <number>0</number>
      </property>
-     <property name="suffix">
-      <string notr="true"/>
+     <property name="bottomMargin">
+      <number>0</number>
      </property>
-     <property name="decimals">
-      <number>2</number>
-     </property>
-     <property name="maximum">
-      <double>9999999.990000000000000</double>
-     </property>
-    </widget>
+     <item>
+      <widget class="QDoubleSpinBox" name="m_amountSpin">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="cursor">
+        <cursorShape>IBeamCursor</cursorShape>
+       </property>
+       <property name="layoutDirection">
+        <enum>Qt::LeftToRight</enum>
+       </property>
+       <property name="locale">
+        <locale language="English" country="UnitedStates"/>
+       </property>
+       <property name="decimals">
+        <number>2</number>
+       </property>
+       <property name="maximum">
+        <double>9999999.990000000000000</double>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="m_amountCurrencyLabel">
+       <property name="text">
+        <string notr="true">XDS</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item row="2" column="2">
     <layout class="QHBoxLayout" name="horizontalLayout">
@@ -139,7 +162,7 @@
      <item>
       <widget class="QLineEdit" name="m_labelEdit">
        <property name="maxLength">
-        <number>50</number>
+        <number>64</number>
        </property>
        <property name="placeholderText">
         <string>Enter a label for this address to add it to your address book</string>

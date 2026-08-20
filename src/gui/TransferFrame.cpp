@@ -26,7 +26,7 @@ Q_DECL_CONSTEXPR quint32 ADDRESS_INPUT_INTERVAL = 1500;
 TransferFrame::TransferFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::TransferFrame), m_accountNumberInputTimer(-1) {
   m_ui->setupUi(this);
   setAttribute(Qt::WA_DeleteOnClose);
-  m_ui->m_amountSpin->setSuffix(" " + CurrencyAdapter::instance().getCurrencyTicker().toUpper());
+  m_ui->m_amountCurrencyLabel->setText(CurrencyAdapter::instance().getCurrencyTicker().toUpper());
 }
 
 TransferFrame::~TransferFrame() {
@@ -52,6 +52,13 @@ qreal TransferFrame::getAmount() const {
 
 QString TransferFrame::getAmountString() const {
   return m_ui->m_amountSpin->cleanText();
+}
+
+quint64 TransferFrame::getMaximumAmount() const {
+  const int decimalPlaces = static_cast<int>(
+    CurrencyAdapter::instance().getNumberOfDecimalPlaces());
+  return CurrencyAdapter::instance().parseAmount(
+    QString::number(m_ui->m_amountSpin->maximum(), 'f', decimalPlaces));
 }
 
 void TransferFrame::disableRemoveButton(bool _disable) {

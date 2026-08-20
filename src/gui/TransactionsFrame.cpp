@@ -169,7 +169,7 @@ void TransactionsFrame::computeSelected() {
         QString amountstring = index.sibling(index.row(), TransactionsModel::COLUMN_AMOUNT).data().toString().remove(',');
         amount += amountstring.toDouble();
     }
-    QString amountText = QString::number(amount, 'f', 12) + " " + CurrencyAdapter::instance().getCurrencyTicker().toUpper();
+    QString amountText = QString::number(amount, 'f', CurrencyAdapter::instance().getNumberOfDecimalPlaces()) + " " + CurrencyAdapter::instance().getCurrencyTicker().toUpper();
     m_ui->m_selectedAmount->show();
     m_ui->m_selectedAmount->setText(amountText);
     m_ui->m_selectedAmountLabel->show();

@@ -24,6 +24,7 @@
 #include "SendFrame.h"
 #include "TransferFrame.h"
 #include "WalletAdapter.h"
+#include "Common/SecureMemory.h"
 #include "WalletEvents.h"
 #include "Settings.h"
 #include "OpenUriDialog.h"
@@ -53,7 +54,7 @@ SendFrame::SendFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::SendFrame
   connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationProgressUpdatedSignal,
     this, &SendFrame::walletSynchronizationInProgress, Qt::QueuedConnection);
 
-  m_ui->m_feeSpin->setSuffix(" " + CurrencyAdapter::instance().getCurrencyTicker().toUpper());
+  m_ui->m_feeCurrencyLabel->setText(CurrencyAdapter::instance().getCurrencyTicker().toUpper());
   m_ui->m_remote_label->hide();
   //m_ui->m_sendButton->setEnabled(false);
   m_ui->m_feeSpin->setMinimum(getMinimalFee());
@@ -158,21 +159,18 @@ void SendFrame::openUriClicked() {
 
 void SendFrame::parsePaymentRequest(QString _request) {
   MainWindow::instance().showNormal();
-  if(_request.startsWith("discrete://", Qt::CaseInsensitive))
-  {
+  _request = _request.trimmed();
+  if (_request.startsWith("discrete://", Qt::CaseInsensitive)) {
     _request.replace(0, 11, "discrete:");
   }
-  if(!_request.startsWith("discrete:", Qt::CaseInsensitive)) {
+  if (!_request.startsWith("discrete:", Qt::CaseInsensitive)) {
     QCoreApplication::postEvent(&MainWindow::instance(), new ShowMessageEvent(tr("Payment request should start with discrete:"), QtCriticalMsg));
     return;
   }
 
-  if(_request.startsWith("discrete:", Qt::CaseInsensitive))
-  {
-    _request.remove(0, 9);
-  }
-
-  QString address = _request.split("?").at(0);
+  _request.remove(0, 9);
+  const qsizetype querySeparator = _request.indexOf('?');
+  const QString address = (querySeparator < 0 ? _request : _request.left(querySeparator)).trimmed();
 
   if (!CurrencyAdapter::instance().validateAddress(address)) {
     QCoreApplication::postEvent(
@@ -180,20 +178,60 @@ void SendFrame::parsePaymentRequest(QString _request) {
       new ShowMessageEvent(tr("Invalid recipient address"), QtCriticalMsg));
     return;
   }
-  m_transfers.at(0)->TransferFrame::setAddress(address);
 
-  _request.replace("?", "&");
+  const QString queryString = querySeparator < 0 ? QString() : _request.mid(querySeparator + 1);
+  const QUrlQuery uriQuery(queryString);
+  const bool hasAmount = uriQuery.hasQueryItem("amount");
+  const QString amountText = uriQuery.queryItemValue("amount", QUrl::FullyDecoded).trimmed();
+  quint64 amount = 0;
+  if (hasAmount) {
+    const quintptr decimalPlaces = CurrencyAdapter::instance().getNumberOfDecimalPlaces();
+    const QString amountPattern = decimalPlaces == 0 ?
+      QStringLiteral("^[0-9]+$") :
+      QStringLiteral("^[0-9]+(?:\\.[0-9]{1,%1})?$").arg(decimalPlaces);
+    const bool hasValidFormat = QRegularExpression(amountPattern).match(amountText).hasMatch();
+    amount = CurrencyAdapter::instance().parseAmount(amountText);
+    const bool isZeroAmount = QRegularExpression(
+      QStringLiteral("^0+(?:\\.0+)?$")).match(amountText).hasMatch();
+    if (!hasValidFormat || (amount == 0 && !isZeroAmount)) {
+      QCoreApplication::postEvent(
+        &MainWindow::instance(),
+        new ShowMessageEvent(tr("Invalid payment request amount"), QtCriticalMsg));
+      return;
+    }
 
-  QUrlQuery uriQuery(_request);
-
-  quint64 amount = CurrencyAdapter::instance().parseAmount(uriQuery.queryItemValue("amount"));
-  if(amount != 0){
-    m_transfers.at(0)->TransferFrame::setAmount(amount);
+    if (amount > m_transfers.at(0)->getMaximumAmount()) {
+      QCoreApplication::postEvent(
+        &MainWindow::instance(),
+        new ShowMessageEvent(tr("Payment request amount exceeds the wallet limit"), QtCriticalMsg));
+      return;
+    }
   }
 
-  QString label = uriQuery.queryItemValue("label");
-  if(!label.isEmpty()){
-    m_transfers.at(0)->TransferFrame::setLabel(label);
+  const QString label = uriQuery.queryItemValue("label", QUrl::FullyDecoded);
+
+  // Apply a valid request to a clean form. Otherwise omitted amount/label
+  // fields could silently retain values from a previous draft or URI.
+  bool hasExistingDraft = m_transfers.size() > 1;
+  Q_FOREACH (TransferFrame* transfer, m_transfers) {
+    hasExistingDraft = hasExistingDraft || !transfer->getAddress().isEmpty() ||
+      transfer->getAmount() != 0 || !transfer->getLabel().isEmpty();
+  }
+  if (hasExistingDraft && QMessageBox::question(
+        &MainWindow::instance(), tr("Replace payment draft?"),
+        tr("Opening this payment request will replace the current Send form."),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+    return;
+  }
+
+  clearAllClicked();
+  m_transfers.at(0)->setAddress(address);
+  if (amount != 0) {
+    m_transfers.at(0)->setAmount(amount);
+  }
+
+  if (!label.isEmpty()) {
+    m_transfers.at(0)->setLabel(label);
   }
 }
 
@@ -290,10 +328,25 @@ void SendFrame::sendClicked() {
   dlg.showPasymentDetails(m_totalAmount);
   if (dlg.exec() == QDialog::Accepted) {
     if (WalletAdapter::instance().isOpen()) {
+      CryptoPQ::SeedMaster protectedSeed{};
+      Tools::SecretLock scrubProtectedSeed(protectedSeed.data(), protectedSeed.size());
+      const bool protectedSpending = WalletAdapter::instance().isYubiKeyProtected();
+      if (protectedSpending) {
+        QString unlockError;
+        if (!WalletAdapter::instance().unlockYubiKeySeed(
+                MainWindow::instance().winId(), protectedSeed, unlockError)) {
+          QCoreApplication::postEvent(
+              &MainWindow::instance(), new ShowMessageEvent(unlockError, QtCriticalMsg));
+          return;
+        }
+      }
       if (m_ui->dontRelayCheckBox->isChecked()) {
         QString errorText;
-        const QString rawTransaction = WalletAdapter::instance().prepareRawTransaction(
-            walletTransfers, fee, &errorText);
+        const QString rawTransaction = protectedSpending
+            ? WalletAdapter::instance().prepareRawTransactionWithSeed(
+                  protectedSeed, walletTransfers, fee, &errorText)
+            : WalletAdapter::instance().prepareRawTransaction(
+                  walletTransfers, fee, &errorText);
         if (rawTransaction.isEmpty()) {
           if (errorText.isEmpty()) {
             errorText = tr("Failed to prepare transaction.");
@@ -307,7 +360,11 @@ void SendFrame::sendClicked() {
         rawDialog.setTransaction(rawTransaction);
         rawDialog.exec();
       } else {
-        WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+        if (protectedSpending) {
+          WalletAdapter::instance().sendTransactionWithSeed(protectedSeed, walletTransfers, fee);
+        } else {
+          WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+        }
       }
     }
   }
