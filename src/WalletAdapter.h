@@ -158,11 +158,12 @@ private:
   std::unique_ptr<System::Dispatcher> m_rpcDispatcher;
   QMutex m_mutex;
   std::atomic<bool> m_isBackupInProgress;
-  std::atomic<bool> m_isResetInProgress;
-  QMetaObject::Connection m_resetSaveConnection;
-  std::thread m_resetWorker;
   std::atomic<quint64> m_saveGeneration;
   std::atomic<quint64> m_activeSaveGeneration;
+  std::atomic<bool> m_isResetInProgress;
+  quint64 m_resetSaveGeneration;
+  QMetaObject::Connection m_resetSaveConnection;
+  std::thread m_resetWorker;
   std::atomic<bool> m_isSynchronized;
   std::atomic<quint64> m_lastWalletTransactionId;
   QTimer m_newTransactionsNotificationTimer;
@@ -185,7 +186,8 @@ private:
   void onWalletSendTransactionCompleted(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
 
   bool save(const QString& _file, bool _details, bool _cache,
-            bool _waitForFile = true, quint64* _saveGeneration = nullptr, bool _backupMode = false);
+            quint64* _saveGeneration = nullptr, bool _backupMode = false,
+            bool _waitForFile = true);
   bool saveAndWait(const QString& _file, bool _details, bool _cache,
                    bool _backupMode, QString& _errorText);
   bool verifyProtectedWalletSnapshot(
@@ -227,9 +229,9 @@ Q_SIGNALS:
   void walletInitCompletedSignal(int _error, const QString& _error_text);
   void walletCloseCompletedSignal();
   void walletSaveCompletedSignal(int _error, const QString& _error_text);
-  void walletResetCompletedSignal(int _error, const QString& _error_text);
   void walletSaveCompletedGenerationSignal(quint64 _generation, int _error,
                                            const QString& _error_text);
+  void walletResetCompletedSignal(int _error, const QString& _error_text);
   void walletSynchronizationProgressUpdatedSignal(quint64 _current, quint64 _total);
   void walletSynchronizationCompletedSignal(int _error, const QString& _error_text);
   void walletActualBalanceUpdatedSignal(quint64 _actual_balance);

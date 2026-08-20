@@ -79,8 +79,8 @@ WalletAdapter& WalletAdapter::instance() {
 }
 
 WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBackupInProgress(false),
-  m_isResetInProgress(false),
   m_saveGeneration(0), m_activeSaveGeneration(0),
+  m_isResetInProgress(false), m_resetSaveGeneration(0),
   m_syncSpeed(0), m_syncPeriod(0), m_isSynchronized(false), m_newTransactionsNotificationTimer(),
   m_lastWalletTransactionId(std::numeric_limits<quint64>::max()),
   m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter")
@@ -857,7 +857,8 @@ bool WalletAdapter::save(bool _details, bool _cache) {
 }
 
 bool WalletAdapter::save(const QString& _file, bool _details, bool _cache,
-                         bool _waitForFile, quint64* _saveGeneration, bool _backupMode) {
+                         quint64* _saveGeneration, bool _backupMode,
+                         bool _waitForFile) {
   Q_CHECK_PTR(m_wallet);
   if (openFile(_file, false, _waitForFile)) {
     // Set the mode only after acquiring m_file's mutex. A preceding async save
@@ -906,7 +907,7 @@ bool WalletAdapter::saveAndWait(const QString& _file, bool _details, bool _cache
       },
       Qt::QueuedConnection);
 
-  if (!save(_file, _details, _cache, true, &expectedGeneration, _backupMode)) {
+  if (!save(_file, _details, _cache, &expectedGeneration, _backupMode)) {
     disconnect(completionConnection);
     _errorText = tr("the wallet could not start the save operation");
     return false;
@@ -965,7 +966,7 @@ bool WalletAdapter::verifyProtectedWalletSnapshot(
 
 void WalletAdapter::backup(const QString& _file) {
   const QString target = _file.endsWith(".wallet") ? _file : _file + ".wallet";
-  save(target, true, false, true, nullptr, true);
+  save(target, true, false, nullptr, true);
 }
 
 void WalletAdapter::autoBackup(){
@@ -973,7 +974,7 @@ void WalletAdapter::autoBackup(){
   source.append(QString(".backup"));
 
   if (!source.isEmpty() && !QFile::exists(source)) {
-    save(source, true, false, true, nullptr, true);
+    save(source, true, false, nullptr, true);
   }
 }
 
@@ -989,8 +990,12 @@ void WalletAdapter::reset() {
   }
 
   m_resetSaveConnection = connect(
-      this, &WalletAdapter::walletSaveCompletedSignal, this,
-      [this](int error, const QString& errorText) {
+      this, &WalletAdapter::walletSaveCompletedGenerationSignal, this,
+      [this](quint64 generation, int error, const QString& errorText) {
+        if (generation != m_resetSaveGeneration) {
+          return;
+        }
+
         disconnect(m_resetSaveConnection);
         if (error != 0) {
           m_isResetInProgress = false;
@@ -1002,11 +1007,10 @@ void WalletAdapter::reset() {
       },
       Qt::QueuedConnection);
 
-  // A reset must never wait on the GUI thread for an in-flight save or backup.
-  // Because this try-lock succeeds only when no other file operation exists,
-  // the next save-completed signal unambiguously belongs to this reset.
+  // Do not wait on the GUI thread if another save/backup currently owns the
+  // wallet file. The operator can retry once that operation has completed.
   if (!save(Settings::instance().getWalletFile() + ".temp", false, false,
-            false)) {
+            &m_resetSaveGeneration, false, false)) {
     disconnect(m_resetSaveConnection);
     m_isResetInProgress = false;
     Q_EMIT walletResetCompletedSignal(
@@ -1019,8 +1023,8 @@ void WalletAdapter::finishResetAfterSave() {
   Q_ASSERT(m_isResetInProgress.load());
   Q_CHECK_PTR(m_wallet);
 
-  // The RPC server keeps a reference to the wallet, so stop it before the old
-  // backend is detached and destroyed.
+  // The RPC server keeps a reference to the wallet, so it must be stopped
+  // before the old backend is detached and destroyed.
   stopWalletRpc();
 
   CryptoNote::IWalletLegacy* oldWallet = m_wallet;
@@ -1034,8 +1038,8 @@ void WalletAdapter::finishResetAfterSave() {
   waitForResetWorker();
 
   // WalletLegacy destruction stops and joins the blockchain synchronizer. On
-  // a large rescan that wait can make Windows mark the GUI as hung, so perform
-  // it off the GUI thread and return through Qt's event queue.
+  // a PQ rescan that can take long enough for Windows to mark the GUI as hung,
+  // so keep that wait off the GUI thread and return through Qt's event queue.
   m_resetWorker = std::thread([this, oldWallet]() {
     delete oldWallet;
     QMetaObject::invokeMethod(
@@ -1493,7 +1497,7 @@ bool WalletAdapter::changePassword(const QString& _oldPassword, const QString& _
       QFile::remove(source);
     }
     // create new encrypted backup
-    save(source, true, false, true, nullptr, true);
+    save(source, true, false, nullptr, true);
   }
 
   return save(true, true);
