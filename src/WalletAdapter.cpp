@@ -269,6 +269,8 @@ void WalletAdapter::waitForResetWorker() {
   if (m_resetWorker.joinable()) {
     m_resetWorker.join();
   }
+}
+
 QByteArray WalletAdapter::embeddedYubiKeyMetadata() const {
   auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
   if (wallet == nullptr) {
@@ -904,7 +906,7 @@ bool WalletAdapter::saveAndWait(const QString& _file, bool _details, bool _cache
       },
       Qt::QueuedConnection);
 
-  if (!save(_file, _details, _cache, &expectedGeneration, _backupMode)) {
+  if (!save(_file, _details, _cache, true, &expectedGeneration, _backupMode)) {
     disconnect(completionConnection);
     _errorText = tr("the wallet could not start the save operation");
     return false;
@@ -963,7 +965,7 @@ bool WalletAdapter::verifyProtectedWalletSnapshot(
 
 void WalletAdapter::backup(const QString& _file) {
   const QString target = _file.endsWith(".wallet") ? _file : _file + ".wallet";
-  save(target, true, false, nullptr, true);
+  save(target, true, false, true, nullptr, true);
 }
 
 void WalletAdapter::autoBackup(){
@@ -971,7 +973,7 @@ void WalletAdapter::autoBackup(){
   source.append(QString(".backup"));
 
   if (!source.isEmpty() && !QFile::exists(source)) {
-    save(source, true, false, nullptr, true);
+    save(source, true, false, true, nullptr, true);
   }
 }
 
@@ -1491,7 +1493,7 @@ bool WalletAdapter::changePassword(const QString& _oldPassword, const QString& _
       QFile::remove(source);
     }
     // create new encrypted backup
-    save(source, true, false, nullptr, true);
+    save(source, true, false, true, nullptr, true);
   }
 
   return save(true, true);
