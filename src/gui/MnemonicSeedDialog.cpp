@@ -19,12 +19,20 @@ MnemonicSeedDialog::MnemonicSeedDialog(QWidget* _parent) : QDialog(_parent), m_u
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &MnemonicSeedDialog::walletClosed, Qt::QueuedConnection);
   connect(m_ui->m_languageCombo, &QComboBox::currentTextChanged, this, &MnemonicSeedDialog::languageChanged);
   initLanguages();
-  if (WalletAdapter::instance().isOpen()) {
-    languageChanged();
-  }
 }
 
 MnemonicSeedDialog::~MnemonicSeedDialog() {
+  m_ui->m_mnemonicSeedEdit->clear();
+}
+
+void MnemonicSeedDialog::setProtectedMnemonicSeed(const QString& _mnemonicSeed) {
+  // A protected wallet has already completed its single WebAuthn request before
+  // this dialog is created. Keep this dialog presentation-only: changing or
+  // initializing the language selector must never trigger a second unlock.
+  m_hasProtectedMnemonicSeed = true;
+  m_ui->m_languageLabel->hide();
+  m_ui->m_languageCombo->hide();
+  m_ui->m_mnemonicSeedEdit->setPlainText(_mnemonicSeed);
 }
 
 void MnemonicSeedDialog::walletOpened() {
@@ -40,14 +48,18 @@ void MnemonicSeedDialog::initLanguages() {
 }
 
 void MnemonicSeedDialog::languageChanged() {
+  if (m_hasProtectedMnemonicSeed) {
+    return;
+  }
+
   const QString languageName = m_ui->m_languageCombo->currentText();
   if (languageName.isEmpty()) {
     m_ui->m_mnemonicSeedEdit->clear();
     return;
   }
 
-  QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(languageName);
-  m_ui->m_mnemonicSeedEdit->setText(mnemonicSeed);
+  QString mnemonicSeed = WalletAdapter::instance().getMnemonicSeed(languageName, winId());
+  m_ui->m_mnemonicSeedEdit->setPlainText(mnemonicSeed);
 }
 
 }

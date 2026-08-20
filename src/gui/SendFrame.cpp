@@ -24,6 +24,7 @@
 #include "SendFrame.h"
 #include "TransferFrame.h"
 #include "WalletAdapter.h"
+#include "Common/SecureMemory.h"
 #include "WalletEvents.h"
 #include "Settings.h"
 #include "OpenUriDialog.h"
@@ -327,10 +328,25 @@ void SendFrame::sendClicked() {
   dlg.showPasymentDetails(m_totalAmount);
   if (dlg.exec() == QDialog::Accepted) {
     if (WalletAdapter::instance().isOpen()) {
+      CryptoPQ::SeedMaster protectedSeed{};
+      Tools::SecretLock scrubProtectedSeed(protectedSeed.data(), protectedSeed.size());
+      const bool protectedSpending = WalletAdapter::instance().isYubiKeyProtected();
+      if (protectedSpending) {
+        QString unlockError;
+        if (!WalletAdapter::instance().unlockYubiKeySeed(
+                MainWindow::instance().winId(), protectedSeed, unlockError)) {
+          QCoreApplication::postEvent(
+              &MainWindow::instance(), new ShowMessageEvent(unlockError, QtCriticalMsg));
+          return;
+        }
+      }
       if (m_ui->dontRelayCheckBox->isChecked()) {
         QString errorText;
-        const QString rawTransaction = WalletAdapter::instance().prepareRawTransaction(
-            walletTransfers, fee, &errorText);
+        const QString rawTransaction = protectedSpending
+            ? WalletAdapter::instance().prepareRawTransactionWithSeed(
+                  protectedSeed, walletTransfers, fee, &errorText)
+            : WalletAdapter::instance().prepareRawTransaction(
+                  walletTransfers, fee, &errorText);
         if (rawTransaction.isEmpty()) {
           if (errorText.isEmpty()) {
             errorText = tr("Failed to prepare transaction.");
@@ -344,7 +360,11 @@ void SendFrame::sendClicked() {
         rawDialog.setTransaction(rawTransaction);
         rawDialog.exec();
       } else {
-        WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+        if (protectedSpending) {
+          WalletAdapter::instance().sendTransactionWithSeed(protectedSeed, walletTransfers, fee);
+        } else {
+          WalletAdapter::instance().sendTransaction(walletTransfers, fee);
+        }
       }
     }
   }

@@ -39,6 +39,7 @@
         <file alias="cancelled">icons/cancelled.svg</file>
         <file alias="remote_mode">icons/remote_mode.svg</file>
         <file alias="tracking">icons/tracking_mode.svg</file>
+        <file alias="yubikey">icons/yubikey_token.svg</file>
         <file alias="sweep">icons/broom.svg</file>
         <file alias="tx-fusion">icons/tx_fusion.svg</file>
         <file alias="coins">icons/coins.svg</file>

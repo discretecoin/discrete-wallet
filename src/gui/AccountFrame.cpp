@@ -339,7 +339,9 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
 
 void AccountFrame::updateAccountNumberDisplay() {
   if (m_accountNumber.isEmpty()) {
-    const bool canRegister = WalletAdapter::instance().isOpen() && !Settings::instance().isTrackingMode();
+    const bool canRegister = WalletAdapter::instance().isOpen() &&
+        !Settings::instance().isTrackingMode() &&
+        !WalletAdapter::instance().isYubiKeyProtected();
     m_ui->m_accountNumberLabel->clear();
     if (m_registrationPending && canRegister) {
       // We've already submitted a registration tx; show a transient hint
@@ -499,6 +501,12 @@ void AccountFrame::registerAccountNumber() {
 
   if (Settings::instance().isTrackingMode()) {
     QMessageBox::critical(this, tr("Error"), tr("Cannot register account number from a tracking wallet."));
+    return;
+  }
+  if (WalletAdapter::instance().isYubiKeyProtected()) {
+    QMessageBox::critical(
+        this, tr("Error"),
+        tr("Account registration is not supported by YubiKey protected spending yet."));
     return;
   }
 

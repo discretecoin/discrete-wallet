@@ -21,3 +21,9 @@ Configure and build:
 cmake -S . -B build
 cmake --build build --config Release --parallel
 ```
+
+## Experimental YubiKey protection
+
+The Windows wallet includes an optional experimental YubiKey-protected
+spending mode. Read the [security model, limitations, and recovery
+requirements](docs/yubikey-protected-spending.md) before enabling it.

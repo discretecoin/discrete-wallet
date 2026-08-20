@@ -60,6 +60,7 @@ private:
   QLabel* m_encryptionStateIconLabel;
   QLabel* m_synchronizationStateIconLabel;
   QLabel* m_trackingModeIconLabel;
+  QLabel* m_yubiKeyModeIconLabel;
   QLabel* m_remoteModeIconLabel;
   QLabel* m_finalityWarningLabel;
   QSystemTrayIcon* m_trayIcon;
@@ -98,7 +99,8 @@ private:
   void setStatusBarText(const QString& _text);
   void showMessage(const QString& _text, QtMsgType _type);
   void askForWalletPassword(bool _error);
-  bool confirmWithPassword();
+  bool confirmWithPassword(QString* _verifiedPassword = nullptr);
+  void handleYubiKeyBypassFiles();
   void encryptedFlagChanged(bool _encrypted);
   void peerCountUpdated(quint64 _peer_count);
   void finalityForkStateChanged(bool _active);
@@ -120,6 +122,8 @@ private:
   Q_SLOT void backupWallet();
   Q_SLOT void resetWallet();
   Q_SLOT void encryptWallet();
+  Q_SLOT void enableYubiKeyProtection();
+  Q_SLOT void addYubiKeyProtectionKey();
   Q_SLOT void aboutQt();
   Q_SLOT void about();
   Q_SLOT void setStartOnLogin(bool _on);
