@@ -245,6 +245,9 @@ int main(int argc, char* argv[]) {
 
   QObject::connect(QApplication::instance(), &QApplication::aboutToQuit, []() {
     MainWindow::instance().quit();
+    // Reset destroys WalletLegacy off the GUI thread. Keep the node alive until
+    // that teardown is complete if the application is closed mid-reset.
+    WalletAdapter::instance().waitForResetWorker();
     if (WalletAdapter::instance().isOpen()) {
       WalletAdapter::instance().close();
     }
