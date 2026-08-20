@@ -855,12 +855,9 @@ bool WalletAdapter::save(bool _details, bool _cache) {
 }
 
 bool WalletAdapter::save(const QString& _file, bool _details, bool _cache,
-                         bool _waitForFile) {
+                         bool _waitForFile, quint64* _saveGeneration, bool _backupMode) {
   Q_CHECK_PTR(m_wallet);
   if (openFile(_file, false, _waitForFile)) {
-                         quint64* _saveGeneration, bool _backupMode) {
-  Q_CHECK_PTR(m_wallet);
-  if (openFile(_file, false)) {
     // Set the mode only after acquiring m_file's mutex. A preceding async save
     // may still own the stream; changing this flag while waiting would make
     // that preceding completion follow the wrong rename/backup path.
