@@ -208,7 +208,7 @@ jobs:
       - name: Build Linux packages
         id: build
         run: |
-          krb_ver=$(git describe --tags --abbrev=0)
+          krb_ver=$(git describe --tags --abbrev=0 --match 'v.[0-9]*')
           appimage_name=Discrete-wallet-$krb_ver.AppImage
           deb_name=Discrete-wallet-linux-amd64-$krb_ver.deb
           docker run --rm \
