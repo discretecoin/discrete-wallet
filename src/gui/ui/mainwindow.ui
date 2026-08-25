@@ -257,6 +257,7 @@
     <addaction name="m_importTrackingKeyAction"/>
     <addaction name="separator"/>
     <addaction name="m_resetAction"/>
+    <addaction name="m_destructiveResetAction"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuWallet"/>
@@ -459,10 +460,18 @@
   </action>
   <action name="m_resetAction">
    <property name="text">
-    <string>Reset wallet</string>
+    <string>Rescan wallet</string>
    </property>
    <property name="toolTip">
-    <string>Reset wallet</string>
+    <string>Rebuild wallet history and preserve recipient metadata</string>
+   </property>
+  </action>
+  <action name="m_destructiveResetAction">
+   <property name="text">
+    <string>Reset wallet (remove recipient metadata)</string>
+   </property>
+   <property name="toolTip">
+    <string>Remove stored recipient metadata and rebuild wallet history</string>
    </property>
   </action>
   <action name="m_showPrivateKey">
@@ -789,6 +798,22 @@
    <signal>triggered()</signal>
    <receiver>MainWindow</receiver>
    <slot>resetWallet()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>506</x>
+     <y>301</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>m_destructiveResetAction</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>destructiveResetWallet()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>-1</x>
@@ -1197,6 +1222,7 @@
   <slot>setCloseToTray(bool)</slot>
   <slot>importKey()</slot>
   <slot>resetWallet()</slot>
+  <slot>destructiveResetWallet()</slot>
   <slot>showPrivateKeys()</slot>
   <slot>DisplayCmdLineHelp()</slot>
   <slot>openConnectionSettings()</slot>
