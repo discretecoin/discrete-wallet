@@ -80,6 +80,7 @@ WalletAdapter& WalletAdapter::instance() {
 
 WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBackupInProgress(false),
   m_saveGeneration(0), m_activeSaveGeneration(0),
+  m_isResetInProgress(false), m_resetSaveGeneration(0),
   m_syncSpeed(0), m_syncPeriod(0), m_isSynchronized(false), m_newTransactionsNotificationTimer(),
   m_lastWalletTransactionId(std::numeric_limits<quint64>::max()),
   m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter")
@@ -122,6 +123,7 @@ WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBa
 }
 
 WalletAdapter::~WalletAdapter() {
+  waitForResetWorker();
 }
 
 QString WalletAdapter::getAddress() const {
@@ -257,6 +259,16 @@ void WalletAdapter::createTrackingWallet(const CryptoNote::AccountKeys& _keys, c
 
 bool WalletAdapter::isOpen() const {
   return m_wallet != nullptr;
+}
+
+bool WalletAdapter::isResetInProgress() const {
+  return m_isResetInProgress.load();
+}
+
+void WalletAdapter::waitForResetWorker() {
+  if (m_resetWorker.joinable()) {
+    m_resetWorker.join();
+  }
 }
 
 QByteArray WalletAdapter::embeddedYubiKeyMetadata() const {
@@ -845,9 +857,10 @@ bool WalletAdapter::save(bool _details, bool _cache) {
 }
 
 bool WalletAdapter::save(const QString& _file, bool _details, bool _cache,
-                         quint64* _saveGeneration, bool _backupMode) {
+                         quint64* _saveGeneration, bool _backupMode,
+                         bool _waitForFile) {
   Q_CHECK_PTR(m_wallet);
-  if (openFile(_file, false)) {
+  if (openFile(_file, false, _waitForFile)) {
     // Set the mode only after acquiring m_file's mutex. A preceding async save
     // may still own the stream; changing this flag while waiting would make
     // that preceding completion follow the wrong rename/backup path.
@@ -967,17 +980,85 @@ void WalletAdapter::autoBackup(){
 
 void WalletAdapter::reset() {
   Q_CHECK_PTR(m_wallet);
-  save(false, false);
-  lock();
-  m_wallet->removeObserver(this);
+
+  bool expected = false;
+  if (!m_isResetInProgress.compare_exchange_strong(expected, true)) {
+    Q_EMIT walletResetCompletedSignal(
+        std::make_error_code(std::errc::operation_in_progress).value(),
+        tr("A wallet reset is already in progress."));
+    return;
+  }
+
+  m_resetSaveConnection = connect(
+      this, &WalletAdapter::walletSaveCompletedGenerationSignal, this,
+      [this](quint64 generation, int error, const QString& errorText) {
+        if (generation != m_resetSaveGeneration) {
+          return;
+        }
+
+        disconnect(m_resetSaveConnection);
+        if (error != 0) {
+          m_isResetInProgress = false;
+          Q_EMIT walletResetCompletedSignal(error, errorText);
+          return;
+        }
+
+        finishResetAfterSave();
+      },
+      Qt::QueuedConnection);
+
+  // Do not wait on the GUI thread if another save/backup currently owns the
+  // wallet file. The operator can retry once that operation has completed.
+  if (!save(Settings::instance().getWalletFile() + ".temp", false, false,
+            &m_resetSaveGeneration, false, false)) {
+    disconnect(m_resetSaveConnection);
+    m_isResetInProgress = false;
+    Q_EMIT walletResetCompletedSignal(
+        std::make_error_code(std::errc::device_or_resource_busy).value(),
+        tr("Another wallet file operation is in progress. Wait for it to finish and try Reset again."));
+  }
+}
+
+void WalletAdapter::finishResetAfterSave() {
+  Q_ASSERT(m_isResetInProgress.load());
+  Q_CHECK_PTR(m_wallet);
+
+  // The RPC server keeps a reference to the wallet, so it must be stopped
+  // before the old backend is detached and destroyed.
+  stopWalletRpc();
+
+  CryptoNote::IWalletLegacy* oldWallet = m_wallet;
+  oldWallet->removeObserver(this);
+  m_wallet = nullptr;
   m_isSynchronized = false;
   m_newTransactionsNotificationTimer.stop();
   m_lastWalletTransactionId = std::numeric_limits<quint64>::max();
   Q_EMIT walletCloseCompletedSignal();
-  QCoreApplication::processEvents();
-  delete m_wallet;
-  m_wallet = nullptr;
-  unlock();
+
+  waitForResetWorker();
+
+  // WalletLegacy destruction stops and joins the blockchain synchronizer. On
+  // a PQ rescan that can take long enough for Windows to mark the GUI as hung,
+  // so keep that wait off the GUI thread and return through Qt's event queue.
+  m_resetWorker = std::thread([this, oldWallet]() {
+    delete oldWallet;
+    QMetaObject::invokeMethod(
+        this, [this]() { completeResetAfterWalletDestruction(); },
+        Qt::QueuedConnection);
+  });
+}
+
+void WalletAdapter::completeResetAfterWalletDestruction() {
+  waitForResetWorker();
+
+  if (QCoreApplication::closingDown()) {
+    m_isResetInProgress = false;
+    return;
+  }
+
+  open("");
+  m_isResetInProgress = false;
+  Q_EMIT walletResetCompletedSignal(0, QString());
 }
 
 quint64 WalletAdapter::getTransactionCount() const {
@@ -1716,8 +1797,13 @@ void WalletAdapter::unlock() {
   }
 }
 
-bool WalletAdapter::openFile(const QString& _file, bool _readOnly) {
-  lock();
+bool WalletAdapter::openFile(const QString& _file, bool _readOnly,
+                             bool _waitForLock) {
+  if (_waitForLock) {
+    lock();
+  } else if (!m_mutex.tryLock()) {
+    return false;
+  }
 
 
 #ifdef Q_OS_WIN
