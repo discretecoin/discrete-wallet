@@ -128,6 +128,15 @@ bool CurrencyAdapter::validateAddress(const QString& _address) const {
     return true;
   }
 
+  return isAccountNumber(_address);
+}
+
+bool CurrencyAdapter::isAccountNumber(const QString& _address) const {
+  const std::string s = _address.trimmed().toStdString();
+  if (s.empty()) {
+    return false;
+  }
+
   CryptoNote::AccountNumber acct;
   uint32_t subaddrIndex = 0;
   return CryptoNote::AccountNumber::fromStringWithIndex(s, acct, subaddrIndex) ||

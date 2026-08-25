@@ -80,6 +80,22 @@
         </property>
       </widget>
      </item>
+     <item>
+      <widget class="QCheckBox" name="m_trusted">
+       <property name="text">
+        <string>Trusted</string>
+       </property>
+       <property name="toolTip">
+        <string>Allow this node to resolve account numbers into recipient keys. Only for a node you run or whose operator you trust.</string>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+       <property name="tristate">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>

@@ -20,6 +20,19 @@ struct NodeSetting {
   quint16 port = 0;
   QString path = "/";
   bool ssl = false;
+
+  // Whether this node may be trusted to answer account-number lookups.
+  //
+  // An account number (H-I-A-C) is a locator, not an address: the wallet hands
+  // the coordinates to a daemon and pays whatever keys come back, so whoever
+  // answers picks the recipient. TLS does not settle it -- a hostile endpoint
+  // presents a perfectly valid certificate for its own name. It is therefore a
+  // per-node decision by the user, off by default. Full addresses carry both
+  // public keys and are unaffected.
+  //
+  // Only remote nodes need this. A daemon on this machine and the built-in node
+  // are trusted by the core without any setting here.
+  bool trusted = false;
 };
 
 class CommandLineParser;

@@ -153,15 +153,40 @@ void AddressBookFrame::copyAccountNumberClicked() {
   auto txIndex = std::make_shared<uint32_t>(0);
 
   NodeAdapter::instance().getPqAccount(viewPubHex, spendPubHex, *registered, *blockHeight, *txIndex,
-    [this, registered, blockHeight, txIndex, fingerprint](std::error_code ec) {
-      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, fingerprint]() {
-        if (!ec && *registered) {
-          CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
-          QApplication::clipboard()->setText(QString::fromStdString(acct.toString(fingerprint)));
-        } else {
+    [this, registered, blockHeight, txIndex, fingerprint, viewPubHex, spendPubHex](std::error_code ec) {
+      if (ec || !*registered) {
+        QMetaObject::invokeMethod(this, [this]() {
           QMessageBox::information(this, tr("Account Number"), tr("No account number registered for this address."));
-        }
-      }, Qt::QueuedConnection);
+        }, Qt::QueuedConnection);
+        return;
+      }
+
+      // The coordinates came from the node, and the number built from them is
+      // what the user will hand out or paste into a withdrawal form. Resolve
+      // them back and require the exact keys of the address we started from, so
+      // that a node cannot answer with someone else's registration. Comparing
+      // the full keys, not the short fingerprint: A is a failsafe against a
+      // typo or a reorg, not evidence about who answered.
+      auto found = std::make_shared<bool>(false);
+      auto resolvedViewPubHex = std::make_shared<std::string>();
+      auto resolvedSpendPubHex = std::make_shared<std::string>();
+      NodeAdapter::instance().resolvePqAccount(*blockHeight, *txIndex, *found,
+        *resolvedViewPubHex, *resolvedSpendPubHex,
+        [this, found, resolvedViewPubHex, resolvedSpendPubHex, blockHeight, txIndex,
+         fingerprint, viewPubHex, spendPubHex](std::error_code resolveError) {
+          const bool matches = !resolveError && *found &&
+            *resolvedViewPubHex == viewPubHex && *resolvedSpendPubHex == spendPubHex;
+          QMetaObject::invokeMethod(this, [this, matches, blockHeight, txIndex, fingerprint]() {
+            if (matches) {
+              CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
+              QApplication::clipboard()->setText(QString::fromStdString(acct.toString(fingerprint)));
+            } else {
+              QMessageBox::information(this, tr("Account Number"),
+                tr("The account number for this address could not be confirmed against "
+                   "the chain. Nothing was copied; share the full address instead."));
+            }
+          }, Qt::QueuedConnection);
+        });
     });
 }
 

@@ -63,11 +63,17 @@ private:
   QTableView *m_remoteNodesView;
   void updateNodeSelect();
   void setupRemoteNodesView(QTableView *view);
+
+  // Keep the trust box showing the selected node's own setting, and available
+  // only where it means anything: a daemon on this machine and the built-in node
+  // are trusted by the core regardless of what is ticked here.
+  void updateTrustState();
   int m_nodesCurrentIndex;
 
   Q_SLOT void addNodeClicked();
   Q_SLOT void removeNodeClicked();
   Q_SLOT void nodesCurrentIndex(int currentIndex);
+  Q_SLOT void connectionModeChanged();
 
 };
 

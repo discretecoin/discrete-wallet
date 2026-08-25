@@ -61,10 +61,25 @@ void NewAddressDialog::onAddressEdited(const QString& _text) {
 }
 
 void NewAddressDialog::resolveAccountNumber(const QString& _input) {
+  // This resolution is not merely informational: the address it produces is what
+  // getAddress() returns and what gets saved in the address book, and from then
+  // on it is an ordinary full address that nothing downstream will question. So
+  // it has to meet the same bar the send path applies to an account number --
+  // otherwise a node the user never trusted could write a recipient of its
+  // choosing into their address book, permanently.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    m_ui->m_addressEdit->setToolTip(
+      tr("The connected node is not marked as trusted, so this account number was "
+         "not looked up. Mark the node trusted in Connection settings, or paste "
+         "the full address."));
+    return;
+  }
+
   CryptoNote::AccountNumber acct;
   uint32_t subaddrIndex = 0;
-  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(_input.toStdString(), acct, subaddrIndex);
-  if (!isHitc && !CryptoNote::AccountNumber::fromString(_input.toStdString(), acct)) {
+  uint32_t wantFingerprint = 0;
+  bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(_input.toStdString(), acct, subaddrIndex, wantFingerprint);
+  if (!isHitc && !CryptoNote::AccountNumber::fromString(_input.toStdString(), acct, wantFingerprint)) {
     return;
   }
 
@@ -73,7 +88,7 @@ void NewAddressDialog::resolveAccountNumber(const QString& _input) {
   auto spendPubHex = std::make_shared<std::string>();
 
   NodeAdapter::instance().resolvePqAccount(acct.blockHeight, acct.txIndex, *found, *viewPubHex, *spendPubHex,
-    [this, _input, found, viewPubHex, spendPubHex](std::error_code ec) {
+    [this, _input, found, viewPubHex, spendPubHex, wantFingerprint](std::error_code ec) {
       if (ec || !*found) {
         return;
       }
@@ -83,6 +98,22 @@ void NewAddressDialog::resolveAccountNumber(const QString& _input) {
       size_t sz = 0;
       if (!Common::fromHex(*viewPubHex, viewPub.data(), viewPub.size(), sz) || sz != viewPub.size() ||
           !Common::fromHex(*spendPubHex, spendPub.data(), spendPub.size(), sz) || sz != spendPub.size()) {
+        return;
+      }
+
+      // Same failsafe the send path applies: the keys the node returned must
+      // fingerprint back to the A character carried in the number itself. Short,
+      // so not an authentication -- but it catches a typo, a reorg, and a
+      // careless substitution before any of it reaches the address book.
+      const uint32_t gotFingerprint = CryptoNote::pqAccountFingerprint(
+        CurrencyAdapter::instance().isTestnet(),
+        spendPub.data(), spendPub.size(), viewPub.data(), viewPub.size());
+      if (gotFingerprint != wantFingerprint) {
+        QMetaObject::invokeMethod(this, [this]() {
+          m_ui->m_addressEdit->setToolTip(
+            tr("The keys on chain do not match this account number's check "
+               "character. Check the number, and do not send to it."));
+        }, Qt::QueuedConnection);
         return;
       }
 

@@ -65,7 +65,7 @@ class RpcNode : public CryptoNote::INodeObserver, public CryptoNote::INodeRpcPro
 public:
   Logging::LoggerManager& m_logManager;
   RpcNode(const CryptoNote::Currency& currency, INodeCallback& callback, Logging::LoggerManager& logManager,
-          const std::string& nodeHost, unsigned short nodePort, bool &enableSSL) :
+          const std::string& nodeHost, unsigned short nodePort, bool &enableSSL, bool trusted) :
     m_callback(callback),
     m_currency(currency),
     m_dispatcher(),
@@ -75,6 +75,13 @@ public:
   {
     m_node.addObserver(dynamic_cast<INodeObserver*>(this));
     m_node.addObserver(dynamic_cast<INodeRpcProxyObserver*>(this));
+    // Only ever set, never cleared: this is the user's own decision, and the
+    // proxy keeps it separate from the trust it derives from the endpoint, so
+    // leaving it alone for an untrusted node still allows loopback and the
+    // project's own endpoints to qualify on their own terms.
+    if (trusted) {
+      m_node.setTrustedResolver(true);
+    }
   }
 
   ~RpcNode() override {
@@ -203,6 +210,10 @@ public:
     }
 
     return connections;
+  }
+
+  bool isTrustedResolver() const override {
+    return m_node.isTrustedResolver();
   }
 
   NodeType getNodeType() const override {
@@ -480,6 +491,12 @@ public:
     return connections;
   }
 
+  // The built-in node is this process. Its answers come from the chain this
+  // wallet itself validated, so there is no third party to trust.
+  bool isTrustedResolver() const override {
+    return true;
+  }
+
   NodeType getNodeType() const override {
     return NodeType::IN_PROCESS;
   }
@@ -573,8 +590,8 @@ private:
   }
 };
 
-Node* createRpcNode(const CryptoNote::Currency& currency, INodeCallback& callback, Logging::LoggerManager& logManager,  const std::string& nodeHost, unsigned short nodePort, bool enableSSL) {
-  return new RpcNode(currency, callback, logManager, nodeHost, nodePort, enableSSL);
+Node* createRpcNode(const CryptoNote::Currency& currency, INodeCallback& callback, Logging::LoggerManager& logManager,  const std::string& nodeHost, unsigned short nodePort, bool enableSSL, bool trusted) {
+  return new RpcNode(currency, callback, logManager, nodeHost, nodePort, enableSSL, trusted);
 }
 
 Node* createInprocessNode(const CryptoNote::Currency& currency, Logging::LoggerManager& logManager,

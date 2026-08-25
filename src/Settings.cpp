@@ -265,6 +265,10 @@ QVector<NodeSetting> Settings::getRpcNodesList() const {
           nodeSetting.port = nodeSettingObj.value("port").toInt();
           nodeSetting.path = nodeSettingObj.value("path").toString();
           nodeSetting.ssl  = nodeSettingObj.value("ssl").toBool();
+          // Absent in settings written before trust became a per-node choice.
+          // Defaulting to false is the safe reading: a node the user never
+          // deliberately trusted must not become a trusted resolver on upgrade.
+          nodeSetting.trusted = nodeSettingObj.value("trusted").toBool(false);
       } else {
          // convert old format
          QUrl remoteNodeUrl = QUrl::fromUserInput(nodeSettingValue.toString());
@@ -272,6 +276,7 @@ QVector<NodeSetting> Settings::getRpcNodesList() const {
          nodeSetting.port = remoteNodeUrl.port();
          nodeSetting.path = "/";
          nodeSetting.ssl  = false;
+         nodeSetting.trusted = false;
       }
       res.append(nodeSetting);
     }
@@ -296,6 +301,7 @@ NodeSetting Settings::getCurrentRemoteNode() const {
     remotenode.port = nodeSettingObj.value("port").toInt();
     remotenode.path = nodeSettingObj.value("path").toString();
     remotenode.ssl = nodeSettingObj.value("ssl").toBool();
+    remotenode.trusted = nodeSettingObj.value("trusted").toBool(false);
   }
   return remotenode;
 }
@@ -623,6 +629,7 @@ void Settings::setCurrentRemoteNode(const NodeSetting &remoteNode) {
     nodeSettingObj.insert("port", QJsonValue(remoteNode.port));
     nodeSettingObj.insert("path", QJsonValue(remoteNode.path));
     nodeSettingObj.insert("ssl", QJsonValue(remoteNode.ssl));
+    nodeSettingObj.insert("trusted", QJsonValue(remoteNode.trusted));
     m_settings.insert(OPTION_REMOTE_NODE, nodeSettingObj);
   }
   saveSettings();
@@ -637,6 +644,7 @@ void Settings::setRpcNodesList(const QVector<NodeSetting> &RpcNodesList) {
       nodeSettingObj.insert("port", QJsonValue(nodeSetting.port));
       nodeSettingObj.insert("path", QJsonValue(nodeSetting.path));
       nodeSettingObj.insert("ssl", QJsonValue(nodeSetting.ssl));
+      nodeSettingObj.insert("trusted", QJsonValue(nodeSetting.trusted));
       nodesList.append(nodeSettingObj);
     }
     m_settings.insert(OPTION_RPCNODES, nodesList);

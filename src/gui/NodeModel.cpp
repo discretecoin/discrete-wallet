@@ -29,10 +29,15 @@ QVariant NodeModel::data(const QModelIndex &index, int role) const {
     if (index.column() == 1) value = QVariant(data.host);
     else if (index.column() == 2) value = QVariant(data.port);
     else if (index.column() == 3) value = QVariant(data.path);
+    else if (index.column() == 4) value = data.trusted ? QVariant(tr("trusted")) : QVariant(QString());
   } else if (role == Qt::DecorationRole && index.column() == 0) {
     QString encryptionIconPath = data.ssl ? ":icons/encrypted" : ":icons/decrypted";
     QPixmap encryptionIcon = QPixmap(encryptionIconPath).scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
     value = QVariant(encryptionIcon);
+  } else if (role == Qt::ToolTipRole && index.column() == 4) {
+    if (data.trusted) {
+      value = QVariant(tr("Trusted to resolve account numbers into recipient keys."));
+    }
   } else if (role == Qt::CheckStateRole && index.column() == 0) {
     if (m_nodesCurrentIndex == index.row()) return Qt::Checked;
     else return Qt::Unchecked;
@@ -46,7 +51,7 @@ int NodeModel::rowCount(const QModelIndex &parent) const {
 
 int NodeModel::columnCount(const QModelIndex &parent) const {
   Q_UNUSED(parent);
-  return 4;
+  return 5;
 }
 
 Qt::ItemFlags NodeModel::flags(const QModelIndex& _index) const {
@@ -72,6 +77,24 @@ void NodeModel::delNode(const int &index) {
   beginResetModel();
   m_RpcNodesList.remove(index);
   endResetModel();
+  Settings::instance().setRpcNodesList(m_RpcNodesList);
+}
+
+bool NodeModel::isTrusted(const int &index) const {
+  if (index < 0 || index >= m_RpcNodesList.count()) {
+    return false;
+  }
+  return m_RpcNodesList[index].trusted;
+}
+
+void NodeModel::setTrusted(const int &index, bool trusted) {
+  if (index < 0 || index >= m_RpcNodesList.count() ||
+      m_RpcNodesList[index].trusted == trusted) {
+    return;
+  }
+  m_RpcNodesList[index].trusted = trusted;
+  const QModelIndex changed = this->index(index, 4);
+  Q_EMIT dataChanged(changed, changed);
   Settings::instance().setRpcNodesList(m_RpcNodesList);
 }
 

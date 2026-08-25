@@ -39,6 +39,12 @@ public:
   // chain. That confirmation happens at send time (see PqRecipient.h).
   bool validateAddress(const QString& _address) const;
 
+  // True if `_address` is an account number rather than a full address, i.e. a
+  // destination the wallet can only complete by asking a node who the recipient
+  // is. Callers use this to check the node is trusted for that before sending;
+  // see NodeAdapter::isTrustedResolver().
+  bool isAccountNumber(const QString& _address) const;
+
 private:
   CryptoNote::Currency m_currency;
 
