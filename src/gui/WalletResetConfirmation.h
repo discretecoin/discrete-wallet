@@ -10,6 +10,9 @@ class QWidget;
 
 namespace WalletGui {
 
+bool walletRebuildAllowed(bool walletOpen, bool rebuildInProgress,
+                          bool discardUncommittedRebuild);
+
 bool confirmDestructiveWalletReset(
     QWidget* parent, const std::function<bool()>& stillCurrent);
 

@@ -778,8 +778,7 @@ void MainWindow::resetWallet() {
   confirmation.setEscapeButton(cancelButton);
   confirmation.exec();
   if (confirmation.clickedButton() == rescanButton &&
-      WalletAdapter::instance().isOpen() &&
-      !WalletAdapter::instance().isResetInProgress()) {
+      WalletAdapter::instance().canRebuildWallet()) {
     startWalletRebuild(false);
   }
 }
@@ -787,8 +786,7 @@ void MainWindow::resetWallet() {
 void MainWindow::destructiveResetWallet() {
   Q_ASSERT(WalletAdapter::instance().isOpen());
   const auto stillCurrent = []() {
-    return WalletAdapter::instance().isOpen() &&
-           !WalletAdapter::instance().isResetInProgress();
+    return WalletAdapter::instance().canRebuildWallet();
   };
   if (confirmDestructiveWalletReset(this, stillCurrent)) {
     startWalletRebuild(true);
@@ -825,10 +823,9 @@ void MainWindow::walletResetCompleted(int _error, const QString& _errorText) {
     m_resetProgressDialog = nullptr;
   }
 
-  if (WalletAdapter::instance().isOpen()) {
-    m_ui->m_resetAction->setEnabled(true);
-    m_ui->m_destructiveResetAction->setEnabled(true);
-  }
+  const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
+  m_ui->m_resetAction->setEnabled(rebuildAvailable);
+  m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
 
   if (_error != 0) {
     QMessageBox::critical(
@@ -1462,7 +1459,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     m_synchronizationStateIconLabel->show();
     m_ui->m_backupWalletAction->setEnabled(true);
     m_ui->m_showPrivateKey->setEnabled(true);
-    const bool rebuildAvailable = !WalletAdapter::instance().isResetInProgress();
+    const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
     m_ui->m_resetAction->setEnabled(rebuildAvailable);
     m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
     m_ui->m_openUriAction->setEnabled(true);

@@ -56,6 +56,7 @@
 #include "WalletLegacy/WalletLegacySerializer.h"
 #include "WalletLegacy/WalletHelper.h"
 #include "Common/SecureMemory.h"
+#include "gui/WalletResetConfirmation.h"
 #include "security/WindowsWebAuthnPrf.h"
 #include "security/WalletFileCommit.h"
 #include "security/YubiKeySeedStore.h"
@@ -269,6 +270,12 @@ bool WalletAdapter::isOpen() const {
 
 bool WalletAdapter::isResetInProgress() const {
   return m_isResetInProgress.load();
+}
+
+bool WalletAdapter::canRebuildWallet() const {
+  return walletRebuildAllowed(
+      m_wallet != nullptr, m_isResetInProgress.load(),
+      m_discardUncommittedRebuild.load());
 }
 
 void WalletAdapter::waitForResetWorker() {
@@ -1004,6 +1011,13 @@ void WalletAdapter::rebuildWallet(bool _destructive) {
 
   waitForResetWorker();
 
+  if (m_discardUncommittedRebuild.load()) {
+    Q_EMIT walletResetCompletedSignal(
+        std::make_error_code(std::errc::operation_not_permitted).value(),
+        tr("The current in-memory rebuild was not committed. Reopen the wallet before running another rescan or reset."));
+    return;
+  }
+
   bool expected = false;
   if (!m_isResetInProgress.compare_exchange_strong(expected, true)) {
     Q_EMIT walletResetCompletedSignal(
@@ -1088,8 +1102,8 @@ void WalletAdapter::rebuildWallet(bool _destructive) {
           m_discardUncommittedRebuild = true;
           m_resetResult.store(std::make_error_code(std::errc::io_error).value());
           m_resetErrorText = persistenceError.isEmpty()
-              ? tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Retry the operation or reopen the wallet.")
-              : tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Retry the operation or reopen the wallet. %1")
+              ? tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Reopen the wallet before retrying.")
+              : tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Reopen the wallet before retrying. %1")
                     .arg(persistenceError);
         } else {
           m_discardUncommittedRebuild = false;

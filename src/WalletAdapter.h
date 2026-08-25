@@ -58,6 +58,7 @@ public:
   void rescan();
   void reset();
   bool isResetInProgress() const;
+  bool canRebuildWallet() const;
   void waitForResetWorker();
 
   QString getAddress() const;

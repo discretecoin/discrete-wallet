@@ -17,6 +17,11 @@ QString resetText(const char* text) {
 
 }  // namespace
 
+bool walletRebuildAllowed(bool walletOpen, bool rebuildInProgress,
+                          bool discardUncommittedRebuild) {
+  return walletOpen && !rebuildInProgress && !discardUncommittedRebuild;
+}
+
 bool confirmDestructiveWalletReset(
     QWidget* parent, const std::function<bool()>& stillCurrent) {
   if (!stillCurrent || !stillCurrent()) {

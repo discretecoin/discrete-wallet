@@ -152,11 +152,36 @@ bool runScenario(const char* name, Choice firstChoice, Choice secondChoice,
   return true;
 }
 
+bool checkRebuildAvailability() {
+  const struct {
+    bool open;
+    bool inProgress;
+    bool discardUncommitted;
+    bool expected;
+  } cases[] = {
+      {true, false, false, true},
+      {false, false, false, false},
+      {true, true, false, false},
+      {true, false, true, false},
+      {false, true, true, false},
+  };
+
+  for (const auto& test : cases) {
+    const bool actual = WalletGui::walletRebuildAllowed(
+        test.open, test.inProgress, test.discardUncommitted);
+    if (actual != test.expected) {
+      std::cerr << "wallet rebuild availability policy failed\n";
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   QApplication app(argc, argv);
-  bool ok = true;
+  bool ok = checkRebuildAvailability();
   ok = runScenario("first Cancel", Choice::Cancel, Choice::Cancel,
                    false, 1) && ok;
   ok = runScenario("first default", Choice::Default, Choice::Cancel,
