@@ -218,8 +218,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-appimage:
-    name: AppImage
+  build-linux:
+    name: Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -227,71 +227,41 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - name: Build AppImage
-        id: appimage
-        run: |
-          krb_version=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          appimage_name=Discrete-wallet-"$krb_version".AppImage
-          docker run --rm \
-            -e QT_VERSION=6.8.3 \
-            -v "$PWD:/workspace" \
-            -w /workspace \
-            ubuntu:22.04 \
-            bash ci/build-linux-artifact.sh appimage "$krb_version"
-          sha256=$(shasum -a 256 "./appimage/$appimage_name" | awk '{print toupper($1)}')
-          asset_path="./appimage/$appimage_name"
-          echo "sha256=${sha256}" >> $GITHUB_OUTPUT
-          echo "artifact_name=${appimage_name}" >> $GITHUB_OUTPUT
-          echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
-          echo "krb_ver=${krb_version}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v0.1.15
-        with:
-          files: ${{ steps.appimage.outputs.asset_path }}
-          name: Discrete Wallet ${{ steps.appimage.outputs.krb_ver }}
-          append_body: true
-          body: |
-            **${{ steps.appimage.outputs.artifact_name }}**
-            ${{ steps.appimage.outputs.sha256 }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-linux-deb:
-    name: Linux deb
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0
-
-      - name: Build deb
+      - name: Build Linux packages
         id: build
         run: |
           krb_ver=$(echo "$GITHUB_REF" | sed 's|refs/tags/||')
-          release_name=Discrete-wallet-linux-amd64-"$krb_ver"
+          appimage_name=Discrete-wallet-"$krb_ver".AppImage
+          deb_name=Discrete-wallet-linux-amd64-"$krb_ver".deb
           docker run --rm \
             -e QT_VERSION=6.8.3 \
             -v "$PWD:/workspace" \
             -w /workspace \
             ubuntu:22.04 \
-            bash ci/build-linux-artifact.sh deb "$krb_ver"
-          sha256=$(shasum -a 256 "./appimage/$release_name.deb" | awk '{print toupper($1)}')
-          asset_path="./appimage/$release_name.deb"
-          echo "sha256=${sha256}" >> $GITHUB_OUTPUT
-          echo "release_name=${release_name}.deb" >> $GITHUB_OUTPUT
-          echo "asset_path=${asset_path}" >> $GITHUB_OUTPUT
+            bash ci/build-linux-artifact.sh all "$krb_ver"
+          appimage_sha256=$(shasum -a 256 "./appimage/$appimage_name" | awk '{print toupper($1)}')
+          deb_sha256=$(shasum -a 256 "./appimage/$deb_name" | awk '{print toupper($1)}')
+          echo "appimage_sha256=${appimage_sha256}" >> $GITHUB_OUTPUT
+          echo "appimage_name=${appimage_name}" >> $GITHUB_OUTPUT
+          echo "appimage_path=./appimage/${appimage_name}" >> $GITHUB_OUTPUT
+          echo "deb_sha256=${deb_sha256}" >> $GITHUB_OUTPUT
+          echo "deb_name=${deb_name}" >> $GITHUB_OUTPUT
+          echo "deb_path=./appimage/${deb_name}" >> $GITHUB_OUTPUT
           echo "krb_ver=${krb_ver}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v0.1.15
         with:
-          files: ${{ steps.build.outputs.asset_path }}
+          files: |
+            ${{ steps.build.outputs.appimage_path }}
+            ${{ steps.build.outputs.deb_path }}
           name: Discrete Wallet ${{ steps.build.outputs.krb_ver }}
           append_body: true
           body: |
-            **${{ steps.build.outputs.release_name }}**
-            ${{ steps.build.outputs.sha256 }}
+            **${{ steps.build.outputs.appimage_name }}**
+            ${{ steps.build.outputs.appimage_sha256 }}
+
+            **${{ steps.build.outputs.deb_name }}**
+            ${{ steps.build.outputs.deb_sha256 }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
