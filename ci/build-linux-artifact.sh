@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-artifact_kind="${1:?usage: $0 appimage|deb version}"
-xds_version="${2:?usage: $0 appimage|deb version}"
+artifact_kind="${1:?usage: $0 appimage|deb|all version}"
+xds_version="${2:?usage: $0 appimage|deb|all version}"
 qt_version="${QT_VERSION:-6.8.3}"
 build_parallel_level="${BUILD_PARALLEL_LEVEL:-2}"
 
@@ -84,6 +84,7 @@ mkdir -p "$build_folder"
 cmake -S . -B "$build_folder" \
   -DARCH=default \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DCMAKE_CXX_STANDARD=17 \
   -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" \
   -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" \
@@ -91,6 +92,8 @@ cmake -S . -B "$build_folder" \
   -DBOOST_IGNORE_SYSTEM_PATHS_DEFAULT=ON \
   -DBOOST_ROOT=/usr
 cmake --build "$build_folder" --parallel "$build_parallel_level"
+bash ci/verify-portable-linux-binary.sh \
+  "$build_folder" "$build_folder/DiscreteWallet"
 xvfb-run -a "$build_folder/DiscreteWallet" --version
 
 cd appimage
@@ -107,7 +110,7 @@ if [[ "$artifact_kind" == "appimage" ]]; then
   exit 0
 fi
 
-if [[ "$artifact_kind" != "deb" ]]; then
+if [[ "$artifact_kind" != "deb" && "$artifact_kind" != "all" ]]; then
   echo "Unknown artifact kind: $artifact_kind" >&2
   exit 1
 fi
@@ -153,4 +156,6 @@ Description: Discrete XDS wallet
 EOF
 
 dpkg-deb --build "$pkgroot" "./appimage/$release_name.deb"
+cmp appimage/AppDir/usr/bin/DiscreteWallet \
+  "$pkgroot/opt/discrete-wallet/usr/bin/DiscreteWallet"
 xvfb-run -a "$pkgroot/opt/discrete-wallet/AppRun" --version
