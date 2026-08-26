@@ -148,6 +148,19 @@ void AddressBookFrame::copyAccountNumberClicked() {
       addr.spendPub.data(), addr.spendPub.size(),
       addr.viewPub.data(), addr.viewPub.size());
 
+  // Same boundary as sending to an account number, seen from the other side: the
+  // node decides which coordinates come back, and this number goes on the
+  // clipboard to be pasted into a withdrawal form. The round trip below catches a
+  // reorg or a stale answer; it cannot catch a node that lies to both questions,
+  // so an untrusted node is not asked at all.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    QMessageBox::information(this, tr("Account Number"),
+      tr("The connected node is not marked as trusted, so account numbers cannot be "
+         "looked up. Mark it trusted in Connection settings if you trust its operator, "
+         "or share the full address instead."));
+    return;
+  }
+
   auto registered = std::make_shared<bool>(false);
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);

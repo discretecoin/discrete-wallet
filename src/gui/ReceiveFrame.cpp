@@ -203,9 +203,23 @@ void ReceiveFrame::createRequestPaymentClicked() {
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);
 
-  // Registration visibility is not sufficient: getPqAccount can return (H,I)
-  // before first-seen finality, while a payer still cannot resolve that number.
-  // Use the payer-side resolve path below as the actual payability gate.
+  // The coordinates come from the node, and the number built from them is what
+  // gets published to payers. A node that answers with coordinates of its own
+  // choosing therefore chooses who gets paid -- and the round trip below does not
+  // settle that, since the same node answers both questions and can lie
+  // consistently. Nor does the A fingerprint: 20 bits is within reach of
+  // grinding a colliding registration. So publication needs a node the user
+  // trusted; the full address, which needs no node at all, is the fallback.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    completePaymentRequest(requestedWalletAddress, requestedWalletAddress,
+      requestedAmount, requestedLabel, requestedPaymentRequestGeneration,
+      PaymentRequestRecipientState::FullAddressFallback);
+    return;
+  }
+
+  // Registration visibility is not sufficient either: getPqAccount can return
+  // (H,I) before first-seen finality, while a payer still cannot resolve that
+  // number. The resolve path below is the payability gate.
   NodeAdapter::instance().getPqAccount(
     ownViewPubHex.toStdString(), ownSpendPubHex.toStdString(),
     *registered, *blockHeight, *txIndex,
