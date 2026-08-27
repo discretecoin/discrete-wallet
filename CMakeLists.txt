@@ -79,6 +79,11 @@ set(CRYPTONOTE_LIB cryptonote)
 include_directories(${CMAKE_BINARY_DIR}
     src
     cryptonote/external
+    # Common/ConsoleHandler.cpp includes <linenoise.hpp> directly. The backend's
+    # own build adds this directory (cryptonote/src/CMakeLists.txt); this file
+    # keeps its own source list rather than add_subdirectory()ing the backend, so
+    # the path has to be mirrored here or that translation unit will not compile.
+    cryptonote/external/linenoise
     cryptonote/include
     cryptonote/src
     external/libqrencode
