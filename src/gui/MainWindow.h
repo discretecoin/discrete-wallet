@@ -56,7 +56,7 @@ private:
 
   QScopedPointer<Ui::MainWindow> m_ui;
   QProgressBar* m_syncProgressBar;
-  QProgressDialog* m_resetProgressDialog;
+  QProgressDialog* m_rebuildProgressDialog;
   QLabel* m_syncStatusLabel;
   QPushButton* m_connectionStateIconLabel;
   QLabel* m_encryptionStateIconLabel;
@@ -110,7 +110,7 @@ private:
   void walletSynchronized(int _error, const QString& _error_text);
   void walletOpened(bool _error, const QString& _error_text);
   void walletClosed();
-  void walletResetCompleted(int _error, const QString& _error_text);
+  void walletRebuildCompleted(int _error, const QString& _error_text);
   void startWalletRebuild(bool _destructive);
   void updateWalletAddress(const QString& _address);
   void reset();
@@ -124,8 +124,8 @@ private:
   Q_SLOT void closeWallet();
   Q_SLOT void importKey();
   Q_SLOT void backupWallet();
+  Q_SLOT void rescanWallet();
   Q_SLOT void resetWallet();
-  Q_SLOT void destructiveResetWallet();
   Q_SLOT void encryptWallet();
   Q_SLOT void enableYubiKeyProtection();
   Q_SLOT void addYubiKeyProtectionKey();

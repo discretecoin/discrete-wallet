@@ -59,7 +59,7 @@ public:
   void reset();
   bool isResetInProgress() const;
   bool canRebuildWallet() const;
-  void waitForResetWorker();
+  void waitForRebuildWorker();
 
   QString getAddress() const;
   quint64 getActualBalance() const;
@@ -163,16 +163,16 @@ private:
   std::atomic<bool> m_isBackupInProgress;
   std::atomic<quint64> m_saveGeneration;
   std::atomic<quint64> m_activeSaveGeneration;
-  std::atomic<bool> m_isResetInProgress;
+  std::atomic<bool> m_isRebuildInProgress;
   std::atomic<bool> m_discardUncommittedRebuild;
-  std::atomic<int> m_resetResult;
-  std::mutex m_resetResultMutex;
-  QString m_resetErrorText;
-  bool m_resetInitObserved;
-  bool m_resetCanResumeExistingWallet;
-  int m_resetInitResult;
-  QString m_resetInitErrorText;
-  std::thread m_resetWorker;
+  std::atomic<int> m_rebuildResult;
+  std::mutex m_rebuildResultMutex;
+  QString m_rebuildErrorText;
+  bool m_rebuildInitObserved;
+  bool m_rebuildCanResumeExistingWallet;
+  int m_rebuildInitResult;
+  QString m_rebuildInitErrorText;
+  std::thread m_rebuildWorker;
   std::atomic<bool> m_isSynchronized;
   std::atomic<quint64> m_lastWalletTransactionId;
   QTimer m_newTransactionsNotificationTimer;
@@ -240,7 +240,7 @@ Q_SIGNALS:
   void walletSaveCompletedSignal(int _error, const QString& _error_text);
   void walletSaveCompletedGenerationSignal(quint64 _generation, int _error,
                                            const QString& _error_text);
-  void walletResetCompletedSignal(int _error, const QString& _error_text);
+  void walletRebuildCompletedSignal(int _error, const QString& _error_text);
   void walletSynchronizationProgressUpdatedSignal(quint64 _current, quint64 _total);
   void walletSynchronizationCompletedSignal(int _error, const QString& _error_text);
   void walletActualBalanceUpdatedSignal(quint64 _actual_balance);

@@ -80,7 +80,7 @@ MainWindow& MainWindow::instance() {
 }
 
 MainWindow::MainWindow() : QMainWindow(),
-  m_ui(new Ui::MainWindow), m_resetProgressDialog(nullptr), m_trayIcon(nullptr), m_tabActionGroup(new QActionGroup(this)), m_isAboutToQuit(false), paymentServer(0),
+  m_ui(new Ui::MainWindow), m_rebuildProgressDialog(nullptr), m_trayIcon(nullptr), m_tabActionGroup(new QActionGroup(this)), m_isAboutToQuit(false), paymentServer(0),
   maxRecentFiles(10), trayIconMenu(0), toggleHideAction(0), maxProgressBar(100), m_statusBarText("") {
   m_ui->setupUi(this);
   m_connectionStateIconLabel = new QPushButton();
@@ -123,8 +123,8 @@ void MainWindow::connectToSignals() {
   connect(&WalletAdapter::instance(), &WalletAdapter::walletStateChangedSignal, this, &MainWindow::setStatusBarText);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletInitCompletedSignal, this, &MainWindow::walletOpened);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &MainWindow::walletClosed);
-  connect(&WalletAdapter::instance(), &WalletAdapter::walletResetCompletedSignal,
-          this, &MainWindow::walletResetCompleted, Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletRebuildCompletedSignal,
+          this, &MainWindow::walletRebuildCompleted, Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionCreatedSignal, this, [this]() {
       QApplication::alert(this);
   });
@@ -764,7 +764,7 @@ void MainWindow::backupWallet() {
     }
 }
 
-void MainWindow::resetWallet() {
+void MainWindow::rescanWallet() {
   Q_ASSERT(WalletAdapter::instance().isOpen());
   QMessageBox confirmation(
       QMessageBox::Question, tr("Rescan wallet"),
@@ -783,7 +783,7 @@ void MainWindow::resetWallet() {
   }
 }
 
-void MainWindow::destructiveResetWallet() {
+void MainWindow::resetWallet() {
   Q_ASSERT(WalletAdapter::instance().isOpen());
   const auto stillCurrent = []() {
     return WalletAdapter::instance().canRebuildWallet();
@@ -794,38 +794,38 @@ void MainWindow::destructiveResetWallet() {
 }
 
 void MainWindow::startWalletRebuild(bool _destructive) {
+  m_ui->m_rescanAction->setEnabled(false);
   m_ui->m_resetAction->setEnabled(false);
-  m_ui->m_destructiveResetAction->setEnabled(false);
-  m_resetProgressDialog = new QProgressDialog(
+  m_rebuildProgressDialog = new QProgressDialog(
       _destructive
           ? tr("Removing stored recipient metadata and rebuilding wallet history...")
           : tr("Rebuilding wallet history while preserving recipient metadata..."),
       QString(), 0, 0, this);
-  m_resetProgressDialog->setWindowTitle(
+  m_rebuildProgressDialog->setWindowTitle(
       _destructive ? tr("Resetting wallet") : tr("Rescanning wallet"));
-  m_resetProgressDialog->setCancelButton(nullptr);
-  m_resetProgressDialog->setWindowModality(Qt::ApplicationModal);
-  m_resetProgressDialog->setMinimumDuration(0);
-  m_resetProgressDialog->setAutoClose(false);
-  m_resetProgressDialog->setAutoReset(false);
-  m_resetProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
-  m_resetProgressDialog->show();
+  m_rebuildProgressDialog->setCancelButton(nullptr);
+  m_rebuildProgressDialog->setWindowModality(Qt::ApplicationModal);
+  m_rebuildProgressDialog->setMinimumDuration(0);
+  m_rebuildProgressDialog->setAutoClose(false);
+  m_rebuildProgressDialog->setAutoReset(false);
+  m_rebuildProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
+  m_rebuildProgressDialog->show();
 
   QTimer::singleShot(0, &WalletAdapter::instance(),
                      _destructive ? &WalletAdapter::reset
                                   : &WalletAdapter::rescan);
 }
 
-void MainWindow::walletResetCompleted(int _error, const QString& _errorText) {
-  if (m_resetProgressDialog != nullptr) {
-    m_resetProgressDialog->close();
-    m_resetProgressDialog->deleteLater();
-    m_resetProgressDialog = nullptr;
+void MainWindow::walletRebuildCompleted(int _error, const QString& _errorText) {
+  if (m_rebuildProgressDialog != nullptr) {
+    m_rebuildProgressDialog->close();
+    m_rebuildProgressDialog->deleteLater();
+    m_rebuildProgressDialog = nullptr;
   }
 
   const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
+  m_ui->m_rescanAction->setEnabled(rebuildAvailable);
   m_ui->m_resetAction->setEnabled(rebuildAvailable);
-  m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
 
   if (_error != 0) {
     QMessageBox::critical(
@@ -1460,8 +1460,8 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     m_ui->m_backupWalletAction->setEnabled(true);
     m_ui->m_showPrivateKey->setEnabled(true);
     const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
+    m_ui->m_rescanAction->setEnabled(rebuildAvailable);
     m_ui->m_resetAction->setEnabled(rebuildAvailable);
-    m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
     m_ui->m_openUriAction->setEnabled(true);
     m_ui->m_signMessageAction->setEnabled(true);
     m_ui->m_verifySignedMessageAction->setEnabled(true);
@@ -1544,8 +1544,8 @@ void MainWindow::walletClosed() {
   m_ui->m_openUriAction->setEnabled(false);
   m_ui->m_exportTrackingKeyAction->setEnabled(false);
   m_ui->m_showPrivateKey->setEnabled(false);
+  m_ui->m_rescanAction->setEnabled(false);
   m_ui->m_resetAction->setEnabled(false);
-  m_ui->m_destructiveResetAction->setEnabled(false);
   m_ui->m_showMnemonicSeedAction->setEnabled(false);
   m_ui->m_signMessageAction->setEnabled(false);
   m_ui->m_verifySignedMessageAction->setEnabled(false);

@@ -247,7 +247,7 @@ int main(int argc, char* argv[]) {
     MainWindow::instance().quit();
     // Reset destroys WalletLegacy off the GUI thread. Keep the node alive until
     // that teardown is complete if the application is closed mid-reset.
-    WalletAdapter::instance().waitForResetWorker();
+    WalletAdapter::instance().waitForRebuildWorker();
     if (WalletAdapter::instance().isOpen()) {
       WalletAdapter::instance().close();
     }
