@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <sstream>
 #include <system_error>
 #include <thread>
 
@@ -53,8 +54,11 @@
 #include "LoggerAdapter.h"
 #include "WalletLegacy/WalletLegacy.h"
 #include "WalletLegacy/WalletLegacySerializer.h"
+#include "WalletLegacy/WalletHelper.h"
 #include "Common/SecureMemory.h"
+#include "gui/WalletResetConfirmation.h"
 #include "security/WindowsWebAuthnPrf.h"
+#include "security/WalletFileCommit.h"
 #include "security/YubiKeySeedStore.h"
 #include "security/YubiKeyWalletFiles.h"
 
@@ -80,7 +84,10 @@ WalletAdapter& WalletAdapter::instance() {
 
 WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBackupInProgress(false),
   m_saveGeneration(0), m_activeSaveGeneration(0),
-  m_isResetInProgress(false), m_resetSaveGeneration(0),
+  m_isResetInProgress(false), m_discardUncommittedRebuild(false),
+  m_resetResult(0),
+  m_resetInitObserved(false), m_resetCanResumeExistingWallet(false),
+  m_resetInitResult(0),
   m_syncSpeed(0), m_syncPeriod(0), m_isSynchronized(false), m_newTransactionsNotificationTimer(),
   m_lastWalletTransactionId(std::numeric_limits<quint64>::max()),
   m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter")
@@ -265,9 +272,16 @@ bool WalletAdapter::isResetInProgress() const {
   return m_isResetInProgress.load();
 }
 
+bool WalletAdapter::canRebuildWallet() const {
+  return walletRebuildAllowed(
+      m_wallet != nullptr, m_isResetInProgress.load(),
+      m_discardUncommittedRebuild.load());
+}
+
 void WalletAdapter::waitForResetWorker() {
   if (m_resetWorker.joinable()) {
     m_resetWorker.join();
+    m_isResetInProgress = false;
   }
 }
 
@@ -836,7 +850,12 @@ bool WalletAdapter::unlockYubiKeySeed(WId _parentWindow,
 
 void WalletAdapter::close() {
   Q_CHECK_PTR(m_wallet);
-  save(true, true);
+  // If a rebuilt wallet could not replace the canonical file, publishing it
+  // later through the ordinary close path would turn a reported failure into
+  // a delayed destructive success. Keep the prior canonical wallet instead.
+  if (!m_discardUncommittedRebuild.load()) {
+    save(true, true);
+  }
   lock();
   m_wallet->removeObserver(this);
   m_isSynchronized = false;
@@ -849,6 +868,7 @@ void WalletAdapter::close() {
 
   delete m_wallet;
   m_wallet = nullptr;
+  m_discardUncommittedRebuild = false;
   unlock();
 }
 
@@ -978,77 +998,144 @@ void WalletAdapter::autoBackup(){
   }
 }
 
+void WalletAdapter::rescan() {
+  rebuildWallet(false);
+}
+
 void WalletAdapter::reset() {
+  rebuildWallet(true);
+}
+
+void WalletAdapter::rebuildWallet(bool _destructive) {
   Q_CHECK_PTR(m_wallet);
+
+  waitForResetWorker();
+
+  if (m_discardUncommittedRebuild.load()) {
+    Q_EMIT walletResetCompletedSignal(
+        std::make_error_code(std::errc::operation_not_permitted).value(),
+        tr("The current in-memory rebuild was not committed. Reopen the wallet before running another rescan or reset."));
+    return;
+  }
 
   bool expected = false;
   if (!m_isResetInProgress.compare_exchange_strong(expected, true)) {
     Q_EMIT walletResetCompletedSignal(
         std::make_error_code(std::errc::operation_in_progress).value(),
-        tr("A wallet reset is already in progress."));
+        tr("A wallet rescan or reset is already in progress."));
     return;
   }
 
-  m_resetSaveConnection = connect(
-      this, &WalletAdapter::walletSaveCompletedGenerationSignal, this,
-      [this](quint64 generation, int error, const QString& errorText) {
-        if (generation != m_resetSaveGeneration) {
-          return;
-        }
-
-        disconnect(m_resetSaveConnection);
-        if (error != 0) {
-          m_isResetInProgress = false;
-          Q_EMIT walletResetCompletedSignal(error, errorText);
-          return;
-        }
-
-        finishResetAfterSave();
-      },
-      Qt::QueuedConnection);
-
-  // Do not wait on the GUI thread if another save/backup currently owns the
-  // wallet file. The operator can retry once that operation has completed.
-  if (!save(Settings::instance().getWalletFile() + ".temp", false, false,
-            &m_resetSaveGeneration, false, false)) {
-    disconnect(m_resetSaveConnection);
+  // A preceding save owns both the stream and the wallet serializer. Once this
+  // probe succeeds, m_isResetInProgress prevents a new file operation from
+  // entering until the in-memory rebuild has finished.
+  if (!m_mutex.tryLock()) {
     m_isResetInProgress = false;
     Q_EMIT walletResetCompletedSignal(
         std::make_error_code(std::errc::device_or_resource_busy).value(),
-        tr("Another wallet file operation is in progress. Wait for it to finish and try Reset again."));
+        tr("Another wallet file operation is in progress. Wait for it to finish and try again."));
+    return;
   }
-}
+  m_mutex.unlock();
 
-void WalletAdapter::finishResetAfterSave() {
-  Q_ASSERT(m_isResetInProgress.load());
-  Q_CHECK_PTR(m_wallet);
+  {
+    std::lock_guard<std::mutex> lock(m_resetResultMutex);
+    m_resetResult.store(std::make_error_code(std::errc::io_error).value());
+    m_resetErrorText = tr("The wallet backend did not report rebuild completion.");
+    m_resetInitObserved = false;
+    m_resetCanResumeExistingWallet = false;
+    m_resetInitResult = 0;
+    m_resetInitErrorText.clear();
+  }
 
   // The RPC server keeps a reference to the wallet, so it must be stopped
-  // before the old backend is detached and destroyed.
+  // while the backend saves, shuts down, reloads, and starts scanning again.
   stopWalletRpc();
 
-  CryptoNote::IWalletLegacy* oldWallet = m_wallet;
-  oldWallet->removeObserver(this);
-  m_wallet = nullptr;
   m_isSynchronized = false;
   m_newTransactionsNotificationTimer.stop();
   m_lastWalletTransactionId = std::numeric_limits<quint64>::max();
   Q_EMIT walletCloseCompletedSignal();
 
-  waitForResetWorker();
+  // WalletLegacy performs the cache-free rebuild through an in-memory stream.
+  // Keep its synchronizer stop/reload work off the GUI thread without creating
+  // a predictable plaintext or encrypted temporary wallet file.
+  CryptoNote::IWalletLegacy* wallet = m_wallet;
+  const QString walletPath = Settings::instance().getWalletFile();
+  m_resetWorker = std::thread([this, wallet, walletPath, _destructive]() {
+    try {
+      if (_destructive) {
+        wallet->reset();
+      } else {
+        wallet->rescan();
+      }
 
-  // WalletLegacy destruction stops and joins the blockchain synchronizer. On
-  // a PQ rescan that can take long enough for Windows to mark the GUI as hung,
-  // so keep that wait off the GUI thread and return through Qt's event queue.
-  m_resetWorker = std::thread([this, oldWallet]() {
-    delete oldWallet;
+      bool rebuildSucceeded = false;
+      {
+        std::lock_guard<std::mutex> lock(m_resetResultMutex);
+        rebuildSucceeded = m_resetResult.load() == 0;
+      }
+      if (rebuildSucceeded) {
+        std::stringstream serializedWallet;
+        CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
+        std::future<std::error_code> saveResult =
+            saveObserver.saveResult.get_future();
+        {
+          CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(
+              *wallet, saveObserver);
+          wallet->save(serializedWallet, true, true);
+          const std::error_code error = saveResult.get();
+          if (error) {
+            throw std::system_error(error);
+          }
+        }
+
+        std::string walletBytes = serializedWallet.str();
+        QString persistenceError;
+        const bool persisted = commitWalletFile(
+            walletPath, walletBytes, persistenceError);
+        if (!walletBytes.empty()) {
+          sodium_memzero(walletBytes.data(), walletBytes.size());
+        }
+        if (!persisted) {
+          std::lock_guard<std::mutex> lock(m_resetResultMutex);
+          m_discardUncommittedRebuild = true;
+          m_resetResult.store(std::make_error_code(std::errc::io_error).value());
+          m_resetErrorText = persistenceError.isEmpty()
+              ? tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Reopen the wallet before retrying.")
+              : tr("The rebuilt wallet could not replace the wallet file. The previous wallet file was kept; wallet access remains closed. Reopen the wallet before retrying. %1")
+                    .arg(persistenceError);
+        } else {
+          m_discardUncommittedRebuild = false;
+        }
+      } else {
+        std::lock_guard<std::mutex> lock(m_resetResultMutex);
+        if (!m_resetCanResumeExistingWallet) {
+          m_discardUncommittedRebuild = true;
+        }
+      }
+    } catch (const std::system_error& e) {
+      std::lock_guard<std::mutex> lock(m_resetResultMutex);
+      if (!m_resetCanResumeExistingWallet) {
+        m_discardUncommittedRebuild = true;
+      }
+      m_resetResult.store(e.code().value());
+      m_resetErrorText = QString::fromLocal8Bit(e.what());
+    } catch (const std::exception& e) {
+      std::lock_guard<std::mutex> lock(m_resetResultMutex);
+      if (!m_resetCanResumeExistingWallet) {
+        m_discardUncommittedRebuild = true;
+      }
+      m_resetResult.store(static_cast<int>(CryptoNote::error::INTERNAL_WALLET_ERROR));
+      m_resetErrorText = QString::fromLocal8Bit(e.what());
+    }
     QMetaObject::invokeMethod(
-        this, [this]() { completeResetAfterWalletDestruction(); },
+        this, [this]() { completeResetAfterWalletRebuild(); },
         Qt::QueuedConnection);
   });
 }
 
-void WalletAdapter::completeResetAfterWalletDestruction() {
+void WalletAdapter::completeResetAfterWalletRebuild() {
   waitForResetWorker();
 
   if (QCoreApplication::closingDown()) {
@@ -1056,9 +1143,33 @@ void WalletAdapter::completeResetAfterWalletDestruction() {
     return;
   }
 
-  open("");
+  int result = 0;
+  QString errorText;
+  bool initObserved = false;
+  bool canResumeExistingWallet = false;
+  int initResult = 0;
+  QString initErrorText;
+  bool discardUncommittedRebuild = false;
+  {
+    std::lock_guard<std::mutex> lock(m_resetResultMutex);
+    result = m_resetResult.load();
+    errorText = m_resetErrorText;
+    initObserved = m_resetInitObserved;
+    canResumeExistingWallet = m_resetCanResumeExistingWallet;
+    initResult = m_resetInitResult;
+    initErrorText = m_resetInitErrorText;
+    discardUncommittedRebuild = m_discardUncommittedRebuild.load();
+  }
   m_isResetInProgress = false;
-  Q_EMIT walletResetCompletedSignal(0, QString());
+  // Backend init happens on the rebuild worker before the final durable save.
+  // Publish it only now so UI and RPC cannot resume during serialization.
+  if (initObserved && (result == 0 || initResult != 0)) {
+    Q_EMIT walletInitCompletedSignal(initResult, initErrorText);
+  } else if (canResumeExistingWallet && !discardUncommittedRebuild) {
+    // A failed initial in-memory save leaves the original backend initialized.
+    Q_EMIT walletInitCompletedSignal(0, QString());
+  }
+  Q_EMIT walletResetCompletedSignal(result, errorText);
 }
 
 quint64 WalletAdapter::getTransactionCount() const {
@@ -1513,7 +1624,17 @@ void WalletAdapter::initCompleted(std::error_code _error) {
     closeFile();
   }
 
-  Q_EMIT walletInitCompletedSignal(_error.value(), QString::fromStdString(_error.message()));
+  const QString errorText = QString::fromStdString(_error.message());
+  if (m_isResetInProgress.load()) {
+    std::lock_guard<std::mutex> lock(m_resetResultMutex);
+    m_resetResult.store(_error.value());
+    m_resetErrorText = errorText;
+    m_resetInitObserved = true;
+    m_resetInitResult = _error.value();
+    m_resetInitErrorText = errorText;
+    return;
+  }
+  Q_EMIT walletInitCompletedSignal(_error.value(), errorText);
 }
 
 void WalletAdapter::runWalletRpc() {
@@ -1601,16 +1722,33 @@ void WalletAdapter::onWalletInitCompleted(int _error, const QString& _errorText)
     Settings::instance().setEncrypted(true);
     delete m_wallet;
     m_wallet = nullptr;
+    m_discardUncommittedRebuild = false;
     break;
   default: {
     delete m_wallet;
     m_wallet = nullptr;
+    m_discardUncommittedRebuild = false;
     break;
   }
   }
 }
 
 void WalletAdapter::saveCompleted(std::error_code _error) {
+  // WalletLegacy::rescan/reset saves to an internal memory stream. It still
+  // notifies every observer, but there is no WalletAdapter file to close or
+  // rename for that private save.
+  if (m_isResetInProgress.load()) {
+    if (_error) {
+      std::lock_guard<std::mutex> lock(m_resetResultMutex);
+      if (!m_resetInitObserved) {
+        m_resetCanResumeExistingWallet = true;
+      }
+      m_resetResult.store(_error.value());
+      m_resetErrorText = QString::fromStdString(_error.message());
+    }
+    return;
+  }
+
   const quint64 saveGeneration = m_activeSaveGeneration.load();
   const bool backupInProgress = m_isBackupInProgress.exchange(false);
   std::error_code result = _error;
@@ -1802,6 +1940,11 @@ bool WalletAdapter::openFile(const QString& _file, bool _readOnly,
   if (_waitForLock) {
     lock();
   } else if (!m_mutex.tryLock()) {
+    return false;
+  }
+
+  if (m_isResetInProgress.load()) {
+    unlock();
     return false;
   }
 

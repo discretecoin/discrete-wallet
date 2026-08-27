@@ -24,6 +24,7 @@
 #include <boost/program_options.hpp>
 
 #include <memory>
+#include <mutex>
 #include <IWalletLegacy.h>
 #include "System/Dispatcher.h"
 #include "Wallet/WalletRpcServer.h"
@@ -54,8 +55,10 @@ public:
   bool save(bool _details, bool _cache);
   void backup(const QString& _file);
   void autoBackup();
+  void rescan();
   void reset();
   bool isResetInProgress() const;
+  bool canRebuildWallet() const;
   void waitForResetWorker();
 
   QString getAddress() const;
@@ -161,8 +164,14 @@ private:
   std::atomic<quint64> m_saveGeneration;
   std::atomic<quint64> m_activeSaveGeneration;
   std::atomic<bool> m_isResetInProgress;
-  quint64 m_resetSaveGeneration;
-  QMetaObject::Connection m_resetSaveConnection;
+  std::atomic<bool> m_discardUncommittedRebuild;
+  std::atomic<int> m_resetResult;
+  std::mutex m_resetResultMutex;
+  QString m_resetErrorText;
+  bool m_resetInitObserved;
+  bool m_resetCanResumeExistingWallet;
+  int m_resetInitResult;
+  QString m_resetInitErrorText;
   std::thread m_resetWorker;
   std::atomic<bool> m_isSynchronized;
   std::atomic<quint64> m_lastWalletTransactionId;
@@ -207,8 +216,8 @@ private:
   bool openFile(const QString& _file, bool _read_only,
                 bool _waitForLock = true);
   void closeFile();
-  void finishResetAfterSave();
-  void completeResetAfterWalletDestruction();
+  void rebuildWallet(bool _destructive);
+  void completeResetAfterWalletRebuild();
   void notifyAboutLastTransaction();
   QString walletErrorMessage(int _error_code);
   void runWalletRpc();

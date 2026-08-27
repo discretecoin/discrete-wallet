@@ -657,6 +657,24 @@ target_link_libraries(${PROJECT_NAME} Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Netwo
 
 include(CTest)
 if (BUILD_TESTING)
+  add_executable(WalletFileCommitTests
+    tests/WalletFileCommitTests.cpp
+    src/security/WalletFileCommit.cpp
+  )
+  target_include_directories(WalletFileCommitTests PRIVATE src)
+  target_link_libraries(WalletFileCommitTests Qt6::Core)
+  add_test(NAME WalletFileCommitTests COMMAND WalletFileCommitTests)
+
+  add_executable(WalletResetConfirmationTests
+    tests/WalletResetConfirmationTests.cpp
+    src/gui/WalletResetConfirmation.cpp
+  )
+  target_include_directories(WalletResetConfirmationTests PRIVATE src)
+  target_link_libraries(WalletResetConfirmationTests Qt6::Core Qt6::Gui Qt6::Widgets)
+  add_test(NAME WalletResetConfirmationTests COMMAND WalletResetConfirmationTests)
+  set_tests_properties(WalletResetConfirmationTests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
   add_executable(YubiKeySeedStoreTests
     tests/YubiKeySeedStoreTests.cpp
     src/security/YubiKeySeedStore.cpp

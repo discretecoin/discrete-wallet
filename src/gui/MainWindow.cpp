@@ -55,6 +55,7 @@
 #include "Settings.h"
 #include "WalletAdapter.h"
 #include "WalletEvents.h"
+#include "WalletResetConfirmation.h"
 #include "SendFrame.h"
 #include "InfoDialog.h"
 #include "ui_mainwindow.h"
@@ -765,24 +766,54 @@ void MainWindow::backupWallet() {
 
 void MainWindow::resetWallet() {
   Q_ASSERT(WalletAdapter::instance().isOpen());
-  if (QMessageBox::warning(this, tr("Warning"), tr("Your wallet will be reset and restored from blockchain.\n"
-    "Are you sure?"), QMessageBox::Ok, QMessageBox::Cancel) == QMessageBox::Ok) {
-    m_ui->m_resetAction->setEnabled(false);
-    m_resetProgressDialog = new QProgressDialog(
-        tr("Saving the wallet and preparing a full blockchain rescan..."),
-        QString(), 0, 0, this);
-    m_resetProgressDialog->setWindowTitle(tr("Resetting wallet"));
-    m_resetProgressDialog->setCancelButton(nullptr);
-    m_resetProgressDialog->setWindowModality(Qt::ApplicationModal);
-    m_resetProgressDialog->setMinimumDuration(0);
-    m_resetProgressDialog->setAutoClose(false);
-    m_resetProgressDialog->setAutoReset(false);
-    m_resetProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
-    m_resetProgressDialog->show();
-
-    // Paint the progress dialog first; teardown continues asynchronously.
-    QTimer::singleShot(0, &WalletAdapter::instance(), &WalletAdapter::reset);
+  QMessageBox confirmation(
+      QMessageBox::Question, tr("Rescan wallet"),
+      tr("Rebuild blockchain-derived wallet history while preserving stored "
+         "recipient addresses and payment proofs?"),
+      QMessageBox::NoButton, this);
+  QPushButton* rescanButton = confirmation.addButton(
+      tr("Rescan"), QMessageBox::AcceptRole);
+  QPushButton* cancelButton = confirmation.addButton(QMessageBox::Cancel);
+  confirmation.setDefaultButton(cancelButton);
+  confirmation.setEscapeButton(cancelButton);
+  confirmation.exec();
+  if (confirmation.clickedButton() == rescanButton &&
+      WalletAdapter::instance().canRebuildWallet()) {
+    startWalletRebuild(false);
   }
+}
+
+void MainWindow::destructiveResetWallet() {
+  Q_ASSERT(WalletAdapter::instance().isOpen());
+  const auto stillCurrent = []() {
+    return WalletAdapter::instance().canRebuildWallet();
+  };
+  if (confirmDestructiveWalletReset(this, stillCurrent)) {
+    startWalletRebuild(true);
+  }
+}
+
+void MainWindow::startWalletRebuild(bool _destructive) {
+  m_ui->m_resetAction->setEnabled(false);
+  m_ui->m_destructiveResetAction->setEnabled(false);
+  m_resetProgressDialog = new QProgressDialog(
+      _destructive
+          ? tr("Removing stored recipient metadata and rebuilding wallet history...")
+          : tr("Rebuilding wallet history while preserving recipient metadata..."),
+      QString(), 0, 0, this);
+  m_resetProgressDialog->setWindowTitle(
+      _destructive ? tr("Resetting wallet") : tr("Rescanning wallet"));
+  m_resetProgressDialog->setCancelButton(nullptr);
+  m_resetProgressDialog->setWindowModality(Qt::ApplicationModal);
+  m_resetProgressDialog->setMinimumDuration(0);
+  m_resetProgressDialog->setAutoClose(false);
+  m_resetProgressDialog->setAutoReset(false);
+  m_resetProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
+  m_resetProgressDialog->show();
+
+  QTimer::singleShot(0, &WalletAdapter::instance(),
+                     _destructive ? &WalletAdapter::reset
+                                  : &WalletAdapter::rescan);
 }
 
 void MainWindow::walletResetCompleted(int _error, const QString& _errorText) {
@@ -792,14 +823,15 @@ void MainWindow::walletResetCompleted(int _error, const QString& _errorText) {
     m_resetProgressDialog = nullptr;
   }
 
+  const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
+  m_ui->m_resetAction->setEnabled(rebuildAvailable);
+  m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
+
   if (_error != 0) {
-    if (WalletAdapter::instance().isOpen()) {
-      m_ui->m_resetAction->setEnabled(true);
-    }
     QMessageBox::critical(
-        this, tr("Wallet reset failed"),
+        this, tr("Wallet rebuild failed"),
         _errorText.isEmpty()
-            ? tr("The wallet could not be reset. Error code: %1").arg(_error)
+            ? tr("The wallet could not be rebuilt. Error code: %1").arg(_error)
             : _errorText);
   }
 }
@@ -1427,7 +1459,9 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
     m_synchronizationStateIconLabel->show();
     m_ui->m_backupWalletAction->setEnabled(true);
     m_ui->m_showPrivateKey->setEnabled(true);
-    m_ui->m_resetAction->setEnabled(true);
+    const bool rebuildAvailable = WalletAdapter::instance().canRebuildWallet();
+    m_ui->m_resetAction->setEnabled(rebuildAvailable);
+    m_ui->m_destructiveResetAction->setEnabled(rebuildAvailable);
     m_ui->m_openUriAction->setEnabled(true);
     m_ui->m_signMessageAction->setEnabled(true);
     m_ui->m_verifySignedMessageAction->setEnabled(true);
@@ -1511,6 +1545,7 @@ void MainWindow::walletClosed() {
   m_ui->m_exportTrackingKeyAction->setEnabled(false);
   m_ui->m_showPrivateKey->setEnabled(false);
   m_ui->m_resetAction->setEnabled(false);
+  m_ui->m_destructiveResetAction->setEnabled(false);
   m_ui->m_showMnemonicSeedAction->setEnabled(false);
   m_ui->m_signMessageAction->setEnabled(false);
   m_ui->m_verifySignedMessageAction->setEnabled(false);
