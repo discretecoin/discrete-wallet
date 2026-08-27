@@ -294,6 +294,13 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);
 
+  // Shown so the user can hand it out, so it is published in every sense that
+  // matters. Coordinates from a node the user has not trusted are not shown at
+  // all; the full address is always displayed and always safe.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    return;
+  }
+
   NodeAdapter::instance().getPqAccount(viewPubHex.toStdString(), spendPubHex.toStdString(), *registered, *blockHeight, *txIndex,
     [this, registered, blockHeight, txIndex, requestedAddress, fingerprint](std::error_code ec) {
       QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, requestedAddress, fingerprint]() {

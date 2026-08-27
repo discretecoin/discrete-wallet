@@ -148,20 +148,58 @@ void AddressBookFrame::copyAccountNumberClicked() {
       addr.spendPub.data(), addr.spendPub.size(),
       addr.viewPub.data(), addr.viewPub.size());
 
+  // Same boundary as sending to an account number, seen from the other side: the
+  // node decides which coordinates come back, and this number goes on the
+  // clipboard to be pasted into a withdrawal form. The round trip below catches a
+  // reorg or a stale answer; it cannot catch a node that lies to both questions,
+  // so an untrusted node is not asked at all.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    QMessageBox::information(this, tr("Account Number"),
+      tr("The connected node is not marked as trusted, so account numbers cannot be "
+         "looked up. Mark it trusted in Connection settings if you trust its operator, "
+         "or share the full address instead."));
+    return;
+  }
+
   auto registered = std::make_shared<bool>(false);
   auto blockHeight = std::make_shared<uint32_t>(0);
   auto txIndex = std::make_shared<uint32_t>(0);
 
   NodeAdapter::instance().getPqAccount(viewPubHex, spendPubHex, *registered, *blockHeight, *txIndex,
-    [this, registered, blockHeight, txIndex, fingerprint](std::error_code ec) {
-      QMetaObject::invokeMethod(this, [this, ec, registered, blockHeight, txIndex, fingerprint]() {
-        if (!ec && *registered) {
-          CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
-          QApplication::clipboard()->setText(QString::fromStdString(acct.toString(fingerprint)));
-        } else {
+    [this, registered, blockHeight, txIndex, fingerprint, viewPubHex, spendPubHex](std::error_code ec) {
+      if (ec || !*registered) {
+        QMetaObject::invokeMethod(this, [this]() {
           QMessageBox::information(this, tr("Account Number"), tr("No account number registered for this address."));
-        }
-      }, Qt::QueuedConnection);
+        }, Qt::QueuedConnection);
+        return;
+      }
+
+      // The coordinates came from the node, and the number built from them is
+      // what the user will hand out or paste into a withdrawal form. Resolve
+      // them back and require the exact keys of the address we started from, so
+      // that a node cannot answer with someone else's registration. Comparing
+      // the full keys, not the short fingerprint: A is a failsafe against a
+      // typo or a reorg, not evidence about who answered.
+      auto found = std::make_shared<bool>(false);
+      auto resolvedViewPubHex = std::make_shared<std::string>();
+      auto resolvedSpendPubHex = std::make_shared<std::string>();
+      NodeAdapter::instance().resolvePqAccount(*blockHeight, *txIndex, *found,
+        *resolvedViewPubHex, *resolvedSpendPubHex,
+        [this, found, resolvedViewPubHex, resolvedSpendPubHex, blockHeight, txIndex,
+         fingerprint, viewPubHex, spendPubHex](std::error_code resolveError) {
+          const bool matches = !resolveError && *found &&
+            *resolvedViewPubHex == viewPubHex && *resolvedSpendPubHex == spendPubHex;
+          QMetaObject::invokeMethod(this, [this, matches, blockHeight, txIndex, fingerprint]() {
+            if (matches) {
+              CryptoNote::AccountNumber acct{*blockHeight, *txIndex};
+              QApplication::clipboard()->setText(QString::fromStdString(acct.toString(fingerprint)));
+            } else {
+              QMessageBox::information(this, tr("Account Number"),
+                tr("The account number for this address could not be confirmed against "
+                   "the chain. Nothing was copied; share the full address instead."));
+            }
+          }, Qt::QueuedConnection);
+        });
     });
 }
 

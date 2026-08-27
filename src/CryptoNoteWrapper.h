@@ -81,6 +81,11 @@ public:
 
   virtual NodeType getNodeType() const = 0;
 
+  // Whether this node may be asked to turn an account number into recipient
+  // keys. The built-in node is the wallet's own; a remote one answers only if
+  // the user marked it trusted in connection settings. See INode.
+  virtual bool isTrustedResolver() const = 0;
+
   virtual CryptoNote::IWalletLegacy* createWallet() = 0;
 
   virtual CryptoNote::INode* getNode() = 0;
@@ -107,7 +112,7 @@ public:
   virtual void blockFoundByMiner(Node& node, uint64_t reward) = 0;
 };
 
-Node* createRpcNode(const CryptoNote::Currency& currency, INodeCallback& callback, Logging::LoggerManager& logManager, const std::string& nodeHost, unsigned short nodePort, bool enableSSL);
+Node* createRpcNode(const CryptoNote::Currency& currency, INodeCallback& callback, Logging::LoggerManager& logManager, const std::string& nodeHost, unsigned short nodePort, bool enableSSL, bool trusted);
 Node* createInprocessNode(const CryptoNote::Currency& currency, Logging::LoggerManager& logManager,
   const CryptoNote::CoreConfig& coreConfig, const CryptoNote::NetNodeConfig& netNodeConfig, const CryptoNote::RpcServerConfig& rpcServerConfig, INodeCallback& callback);
 

@@ -120,6 +120,10 @@ CryptoNote::IWalletLegacy* NodeAdapter::createWallet() const {
   return m_node->createWallet();
 }
 
+bool NodeAdapter::isTrustedResolver() const {
+  return m_node != nullptr && m_node->isTrustedResolver();
+}
+
 NodeType NodeAdapter::getNodeType() const {
   return m_node == nullptr ? NodeType::UNKNOWN : m_node->getNodeType();
 }
@@ -139,7 +143,7 @@ bool NodeAdapter::init() {
 
     LoggerAdapter::instance().log("Initializing with local node...");
     QUrl localNodeUrl = QUrl::fromUserInput(QString("127.0.0.1:%1").arg(Settings::instance().getCurrentLocalDaemonPort()));
-    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), localNodeUrl.host().toStdString(), localNodeUrl.port(), false);
+    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), localNodeUrl.host().toStdString(), localNodeUrl.port(), false, false);
     QTimer initTimer;
     initTimer.setInterval(3000);
     initTimer.setSingleShot(true);
@@ -162,7 +166,7 @@ bool NodeAdapter::init() {
 
     LoggerAdapter::instance().log("Initializing with remote node...");
     const NodeSetting nodeSetting = Settings::instance().getCurrentRemoteNode();
-    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), nodeSetting.host.toStdString(), nodeSetting.port, nodeSetting.ssl);
+    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), nodeSetting.host.toStdString(), nodeSetting.port, nodeSetting.ssl, nodeSetting.trusted);
     QTimer initTimer;
     initTimer.setInterval(3000);
     initTimer.setSingleShot(true);
@@ -185,7 +189,7 @@ bool NodeAdapter::init() {
 
     LoggerAdapter::instance().log("Trying to connect to local daemon...");
     QUrl localNodeUrl = QUrl::fromUserInput(QString("127.0.0.1:%1").arg(CryptoNote::RPC_DEFAULT_PORT));
-    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), localNodeUrl.host().toStdString(), localNodeUrl.port(), false);
+    m_node = createRpcNode(CurrencyAdapter::instance().getCurrency(), *this, LoggerAdapter::instance().getLoggerManager(), localNodeUrl.host().toStdString(), localNodeUrl.port(), false, false);
     QTimer initTimer;
     initTimer.setInterval(3000);
     initTimer.setSingleShot(true);

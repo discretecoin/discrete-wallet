@@ -110,6 +110,20 @@ bool TransferFrame::looksLikeAccountNumber(const QString& _text) {
 }
 
 void TransferFrame::resolveAccountNumber(const QString& _input) {
+  // Say this before looking anything up. The lookup itself would succeed and
+  // report "found" against any node, but the send would then be refused, and a
+  // green tick followed by a rejection is worse than no tick: it reads as though
+  // the number were fine and something else went wrong. The wallet will not take
+  // recipient keys from a node the user has not trusted, so neither will this.
+  if (!NodeAdapter::instance().isTrustedResolver()) {
+    m_ui->m_addressStatusLabel->setStyleSheet(QStringLiteral("color:#D96A73;"));
+    m_ui->m_addressStatusLabel->setText(
+      tr("This node is not marked trusted, so account numbers cannot be looked up. "
+         "Mark it trusted in connection settings, or paste the full address."));
+    m_ui->m_addressStatusLabel->show();
+    return;
+  }
+
   CryptoNote::AccountNumber acct;
   uint32_t subaddrIndex = 0;
   bool isHitc = CryptoNote::AccountNumber::fromStringWithIndex(_input.toStdString(), acct, subaddrIndex);

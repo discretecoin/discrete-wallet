@@ -257,6 +257,22 @@ void SendFrame::sendClicked() {
       return;
     }
 
+    // An account number names a registration, not a recipient: the wallet has to
+    // ask a node for the keys behind it and then pays whoever it is told. The
+    // wallet itself refuses that against an untrusted node, so catch it here and
+    // say why, rather than letting the send fail with a generic error after the
+    // user has filled the whole form in.
+    if (CurrencyAdapter::instance().isAccountNumber(address) &&
+        !NodeAdapter::instance().isTrustedResolver()) {
+      QCoreApplication::postEvent(
+        &MainWindow::instance(),
+        new ShowMessageEvent(
+          tr("The connected node is not marked as trusted, so account numbers cannot "
+             "be resolved. Mark it trusted in Connection settings if you trust its "
+             "operator, or paste the recipient's full address instead."), QtCriticalMsg));
+      return;
+    }
+
     CryptoNote::WalletLegacyTransfer walletTransfer;
     walletTransfer.address = address.toStdString();
     uint64_t amount = CurrencyAdapter::instance().parseAmount(transfer->getAmountString());

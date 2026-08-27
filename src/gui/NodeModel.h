@@ -23,6 +23,12 @@ public:
   void pushCurrentIndex(int currentIndex);
   void addNode(const NodeSetting &nodeSetting);
   void delNode(const int &index);
+
+  // Trust is a property of a node, not part of its identity: changing it must
+  // not make the node look like a different one to getIndexByData(), or the
+  // current selection would be lost the moment the box is ticked.
+  bool isTrusted(const int &index) const;
+  void setTrusted(const int &index, bool trusted);
   int getIndexByData(const NodeSetting &nodeSetting) const;
   NodeSetting getDataByIndex(const int &index) const;
 

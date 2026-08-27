@@ -25,6 +25,7 @@ public:
   quint16 getPort() const;
   QString getPath() const;
   bool getEnableSSL() const;
+  bool getTrusted() const;
 
 private:
   QScopedPointer<Ui::NewNodeDialog> m_ui;

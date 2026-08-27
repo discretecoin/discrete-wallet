@@ -45,4 +45,8 @@ bool NewNodeDialog::getEnableSSL() const {
   return res;
 }
 
+bool NewNodeDialog::getTrusted() const {
+  return m_ui->m_trusted->checkState() == Qt::Checked;
+}
+
 }

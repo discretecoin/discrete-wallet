@@ -67,6 +67,10 @@ public:
   NodeType getNodeType() const;
   bool isOffline();
 
+  // Whether the connected node may be asked to resolve an account number. False
+  // before init(). See CryptoNoteWrapper.h and Settings.h (NodeSetting::trusted).
+  bool isTrustedResolver() const;
+
   void peerCountUpdated(Node& _node, size_t _count) Q_DECL_OVERRIDE;
   void localBlockchainUpdated(Node& _node, uint64_t _height) Q_DECL_OVERRIDE;
   void lastKnownBlockHeightUpdated(Node& _node, uint64_t _height) Q_DECL_OVERRIDE;
