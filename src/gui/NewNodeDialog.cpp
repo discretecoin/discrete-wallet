@@ -6,6 +6,8 @@
 
 #include "NewNodeDialog.h"
 
+#include "CryptoNoteConfig.h"
+
 #include "ui_newnodedialog.h"
 
 namespace WalletGui {
@@ -19,11 +21,20 @@ NewNodeDialog::~NewNodeDialog() {
 }
 
 void NewNodeDialog::enableSSLstateChanged(const int state) {
-  const quint16 offset = 100;
-  quint16 port = m_ui->m_portSpin->value();
-  if (state == Qt::Unchecked && port > offset) port -= offset;
-  else if (state == Qt::Checked && port <= 65535 - offset) port += offset;
-  m_ui->m_portSpin->setValue(port);
+  // Move between the two defaults, and only between them. The old behaviour
+  // added or subtracted a flat 100, which came from Karbo's port layout; on
+  // Discrete the plain and TLS RPC ports are adjacent (9331 / 9332), so a fixed
+  // offset lands on nothing. Anything the operator typed themselves is left
+  // exactly as typed -- a checkbox must not silently rewrite a port they chose.
+  const quint16 plainPort = static_cast<quint16>(CryptoNote::RPC_DEFAULT_PORT);
+  const quint16 sslPort = static_cast<quint16>(CryptoNote::RPC_DEFAULT_SSL_PORT);
+  const quint16 port = m_ui->m_portSpin->value();
+
+  if (state == Qt::Checked && port == plainPort) {
+    m_ui->m_portSpin->setValue(sslPort);
+  } else if (state == Qt::Unchecked && port == sslPort) {
+    m_ui->m_portSpin->setValue(plainPort);
+  }
 }
 
 QString NewNodeDialog::getHost() const {
