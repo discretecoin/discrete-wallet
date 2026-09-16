@@ -112,6 +112,14 @@ private:
   void walletClosed();
   void walletRebuildCompleted(int _error, const QString& _error_text);
   void startWalletRebuild(bool _destructive);
+  void showPqConsolidationSuggestion(
+      quint64 _availableInputs, quint64 _selectedInputs,
+      quint64 _resultingOutputs, quint64 _fee,
+      bool _automatic, bool _requiresHardwareAuthorization);
+  void showPqConsolidationResult(
+      bool _relayed, const QString& _message,
+      const QString& _transactionHash, quint64 _selectedInputs,
+      quint64 _resultingOutputs, quint64 _fee, bool _automatic);
   void updateWalletAddress(const QString& _address);
   void reset();
   void onUriOpenSignal();
@@ -136,6 +144,7 @@ private:
   Q_SLOT void setMiningOnLaunch(bool _on);
   Q_SLOT void setCloseToTray(bool _on);
   Q_SLOT void hideEverythingOnLocked(bool _on);
+  Q_SLOT void setAutoConsolidation(bool _on);
   Q_SLOT void showPrivateKeys();
   Q_SLOT void DisplayCmdLineHelp();
   Q_SLOT void openConnectionSettings();

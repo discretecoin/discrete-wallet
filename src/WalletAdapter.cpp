@@ -88,9 +88,13 @@ WalletAdapter::WalletAdapter() : QObject(), m_wallet(nullptr), m_mutex(), m_isBa
   m_rebuildResult(0),
   m_rebuildInitObserved(false), m_rebuildCanResumeExistingWallet(false),
   m_rebuildInitResult(0),
-  m_syncSpeed(0), m_syncPeriod(0), m_isSynchronized(false), m_newTransactionsNotificationTimer(),
+  m_isSynchronized(false),
+  m_consolidationCheckQueued(false), m_consolidationInProgress(false),
+  m_consolidationPromptOutstanding(false), m_consolidationRetryBlocked(false),
   m_lastWalletTransactionId(std::numeric_limits<quint64>::max()),
-  m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter")
+  m_newTransactionsNotificationTimer(),
+  m_logger(LoggerAdapter::instance().getLoggerManager(), "WalletAdapter"),
+  m_syncSpeed(0), m_syncPeriod(0)
 {
   connect(this, &WalletAdapter::walletInitCompletedSignal, this, &WalletAdapter::onWalletInitCompleted, Qt::QueuedConnection);
   connect(this, &WalletAdapter::walletSendTransactionCompletedSignal, this, &WalletAdapter::onWalletSendTransactionCompleted, Qt::QueuedConnection);
@@ -859,6 +863,10 @@ void WalletAdapter::close() {
   lock();
   m_wallet->removeObserver(this);
   m_isSynchronized = false;
+  m_consolidationCheckQueued = false;
+  m_consolidationInProgress = false;
+  m_consolidationPromptOutstanding = false;
+  m_consolidationRetryBlocked = false;
   m_newTransactionsNotificationTimer.stop();
   m_lastWalletTransactionId = std::numeric_limits<quint64>::max();
   Q_EMIT walletCloseCompletedSignal();
@@ -1310,6 +1318,10 @@ void WalletAdapter::sendTransactionImpl(
         break;
       case CryptoNote::PqSendErrorCode::TooLarge:
         code = CryptoNote::error::AMOUNT_TOO_LARGE_FOR_ONE_TRANSACTION;
+        // A failed ordinary payment is the strongest possible signal that the
+        // maintenance suggestion should be shown again, even if it was dismissed
+        // earlier in this session.
+        schedulePqConsolidationCheck(true);
         break;
       case CryptoNote::PqSendErrorCode::ZeroAmount:
         code = CryptoNote::error::WRONG_AMOUNT;
@@ -1347,6 +1359,189 @@ void WalletAdapter::sendTransactionImpl(
       CryptoNote::WALLET_LEGACY_INVALID_TRANSACTION_ID, code,
       tr("Failed to send transaction: %1").arg(QString::fromUtf8(_error.what())));
     Q_EMIT updateBlockStatusTextWithDelaySignal();
+  }
+}
+
+void WalletAdapter::schedulePqConsolidationCheck(bool _force) {
+  if (_force) {
+    m_consolidationRetryBlocked = false;
+    m_consolidationPromptOutstanding = false;
+  }
+  if (m_consolidationCheckQueued.exchange(true)) {
+    return;
+  }
+  QMetaObject::invokeMethod(
+      this,
+      [this]() {
+        m_consolidationCheckQueued = false;
+        checkPqConsolidation();
+      },
+      Qt::QueuedConnection);
+}
+
+void WalletAdapter::checkPqConsolidation() {
+  if (m_wallet == nullptr || !m_isSynchronized.load() ||
+      m_isRebuildInProgress.load() || m_consolidationInProgress.load() ||
+      m_consolidationPromptOutstanding.load() ||
+      m_consolidationRetryBlocked.load()) {
+    return;
+  }
+
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr || !wallet->pqEnabled()) {
+    return;
+  }
+  const bool protectedSpend = isYubiKeyProtected();
+  if (wallet->isTrackingWallet() && !protectedSpend) {
+    return;
+  }
+
+  // Never stack maintenance transactions. Waiting for confirmation gives the
+  // next plan a stable spendable set and avoids filling the pool with a chain of
+  // self-spends. This checks ledger transaction state, not the UI's broader
+  // "pending balance", which also includes immature coinbase outputs.
+  if (wallet->pqHasUnconfirmedTransactions()) {
+    return;
+  }
+
+  try {
+    const CryptoNote::PqConsolidationPlan plan =
+        wallet->pqConsolidationPlan();
+    if (!plan.useful() ||
+        plan.availableInputs <=
+            CryptoNote::parameters::MAX_PQ_INPUTS_PER_TX) {
+      return;
+    }
+
+    const bool automatic =
+        Settings::instance().isAutoConsolidationEnabled() &&
+        !protectedSpend;
+    m_consolidationPromptOutstanding = true;
+    Q_EMIT walletConsolidationSuggestedSignal(
+        static_cast<quint64>(plan.availableInputs),
+        static_cast<quint64>(plan.selectedInputs),
+        static_cast<quint64>(plan.resultingOutputs), plan.fee,
+        automatic, protectedSpend);
+  } catch (const std::exception& error) {
+    m_logger(Logging::WARNING)
+        << "Could not evaluate PQ consolidation: " << error.what();
+  }
+}
+
+void WalletAdapter::dismissPqConsolidationSuggestion() {
+  m_consolidationPromptOutstanding = false;
+  // "Not now" means not again during this open-wallet session. A payment that
+  // actually hits the input limit explicitly clears this suppression.
+  m_consolidationRetryBlocked = true;
+}
+
+void WalletAdapter::reevaluatePqConsolidation() {
+  schedulePqConsolidationCheck(true);
+}
+
+void WalletAdapter::consolidatePqOutputs(WId _parentWindow, bool _automatic) {
+  m_consolidationPromptOutstanding = false;
+  if (m_consolidationInProgress.exchange(true)) {
+    return;
+  }
+
+  auto finishFailure = [this, _automatic](const QString& message) {
+    m_consolidationInProgress = false;
+    m_consolidationRetryBlocked = true;
+    Q_EMIT walletConsolidationCompletedSignal(
+        false, message, QString(), 0, 0, 0, _automatic);
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+  };
+
+  if (m_wallet == nullptr || !m_isSynchronized.load() ||
+      m_isRebuildInProgress.load()) {
+    finishFailure(tr("The wallet must be open and fully synchronized before consolidation."));
+    return;
+  }
+
+  auto* wallet = dynamic_cast<CryptoNote::WalletLegacy*>(m_wallet);
+  if (wallet == nullptr || !wallet->pqEnabled()) {
+    finishFailure(tr("This wallet backend does not support output consolidation."));
+    return;
+  }
+  if (wallet->pqHasUnconfirmedTransactions()) {
+    finishFailure(tr("Wait for the current pending transaction to confirm before consolidating again."));
+    return;
+  }
+
+  CryptoPQ::SeedMaster seedMaster{};
+  Tools::SecretLock scrubSeed(seedMaster.data(), seedMaster.size());
+  const bool protectedSpend = isYubiKeyProtected();
+  if (wallet->isTrackingWallet() && !protectedSpend) {
+    finishFailure(tr("A tracking wallet cannot consolidate outputs."));
+    return;
+  }
+  if (protectedSpend) {
+    if (_automatic) {
+      finishFailure(tr("Automatic consolidation cannot authorize a YubiKey-protected spend."));
+      return;
+    }
+    QString errorText;
+    if (!unlockYubiKeySeed(
+            _parentWindow, seedMaster, errorText,
+            tr("Authorize wallet output consolidation"))) {
+      finishFailure(errorText.isEmpty()
+                        ? tr("YubiKey authorization was cancelled.")
+                        : errorText);
+      return;
+    }
+  }
+
+  bool adapterLocked = false;
+  try {
+    lock();
+    adapterLocked = true;
+    Q_EMIT walletStateChangedSignal(tr("Consolidating wallet outputs"));
+
+    CryptoNote::PqConsolidationResult result = protectedSpend
+        ? wallet->consolidatePqOutputsWithSeed(seedMaster)
+        : wallet->consolidatePqOutputs();
+    const Crypto::Hash txid =
+        getObjectHash(result.transaction.tx);
+    const QString txHash =
+        QString::fromStdString(Common::podToHex(txid));
+    const quint64 selectedInputs =
+        static_cast<quint64>(result.plan.selectedInputs);
+    const quint64 resultingOutputs =
+        static_cast<quint64>(result.plan.resultingOutputs);
+    const quint64 fee = result.plan.fee;
+
+    unlock();
+    adapterLocked = false;
+    m_consolidationInProgress = false;
+    m_consolidationRetryBlocked = false;
+
+    QString warning;
+    if (!save(true, true)) {
+      warning = tr("The transaction was relayed, but the wallet could not start saving its updated cache. Do not repeat the consolidation; close the wallet only after a successful save.");
+    }
+    Q_EMIT walletConsolidationCompletedSignal(
+        true, warning, txHash, selectedInputs, resultingOutputs, fee,
+        _automatic);
+    Q_EMIT updateBlockStatusTextWithDelaySignal();
+  } catch (const CryptoNote::PqSendError& error) {
+    if (adapterLocked) {
+      unlock();
+    }
+    finishFailure(tr("Consolidation was not created: %1")
+                      .arg(QString::fromUtf8(error.what())));
+  } catch (const std::system_error& error) {
+    if (adapterLocked) {
+      unlock();
+    }
+    finishFailure(tr("Consolidation was not relayed: %1")
+                      .arg(QString::fromUtf8(error.what())));
+  } catch (const std::exception& error) {
+    if (adapterLocked) {
+      unlock();
+    }
+    finishFailure(tr("Consolidation failed: %1")
+                      .arg(QString::fromUtf8(error.what())));
   }
 }
 
@@ -1700,6 +1895,10 @@ void WalletAdapter::stopWalletRpc() {
 void WalletAdapter::onWalletInitCompleted(int _error, const QString& _errorText) {
   switch(_error) {
   case 0: {
+    m_consolidationCheckQueued = false;
+    m_consolidationInProgress = false;
+    m_consolidationPromptOutstanding = false;
+    m_consolidationRetryBlocked = false;
     migrateLegacyYubiKeySidecar();
     Q_EMIT walletActualBalanceUpdatedSignal(m_wallet->actualBalance());
     Q_EMIT walletPendingBalanceUpdatedSignal(m_wallet->pendingBalance());
@@ -1836,15 +2035,18 @@ void WalletAdapter::synchronizationCompleted(std::error_code _error) {
     m_isSynchronized = true;
     Q_EMIT updateBlockStatusTextSignal();
     Q_EMIT walletSynchronizationCompletedSignal(_error.value(), QString::fromStdString(_error.message()));
+    schedulePqConsolidationCheck();
   }
 }
 
 void WalletAdapter::actualBalanceUpdated(uint64_t _actual_balance) {
   Q_EMIT walletActualBalanceUpdatedSignal(_actual_balance);
+  schedulePqConsolidationCheck();
 }
 
 void WalletAdapter::pendingBalanceUpdated(uint64_t _pending_balance) {
   Q_EMIT walletPendingBalanceUpdatedSignal(_pending_balance);
+  schedulePqConsolidationCheck();
 }
 
 void WalletAdapter::externalTransactionCreated(CryptoNote::TransactionId _transactionId) {

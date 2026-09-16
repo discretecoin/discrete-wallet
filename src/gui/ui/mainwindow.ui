@@ -247,6 +247,7 @@
     <addaction name="m_changePasswordAction"/>
     <addaction name="m_yubiKeyProtectionAction"/>
     <addaction name="m_addYubiKeyAction"/>
+    <addaction name="m_autoConsolidationAction"/>
     <addaction name="separator"/>
     <addaction name="m_showMnemonicSeedAction"/>
     <addaction name="m_showPrivateKey"/>
@@ -391,6 +392,20 @@
    </property>
    <property name="toolTip">
     <string>Enroll another independently usable FIDO2 security key for this protected wallet</string>
+   </property>
+  </action>
+  <action name="m_autoConsolidationAction">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Automatic output consolidation</string>
+   </property>
+   <property name="toolTip">
+    <string>Create fee-paying self-transactions when this wallet exceeds the per-transaction input limit</string>
    </property>
   </action>
   <action name="m_aboutCryptonoteAction">

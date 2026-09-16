@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QSignalBlocker>
 #include <QSystemTrayIcon>
 #include <QDesktopServices>
 #include <QTimer>
@@ -35,6 +36,7 @@
 #include "Common/StringTools.h"
 #include "Common/Util.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"
+#include "CryptoNoteConfig.h"
 #include "AboutDialog.h"
 #include "AnimatedLabel.h"
 #include "AddressBookModel.h"
@@ -125,6 +127,14 @@ void MainWindow::connectToSignals() {
   connect(&WalletAdapter::instance(), &WalletAdapter::walletCloseCompletedSignal, this, &MainWindow::walletClosed);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletRebuildCompletedSignal,
           this, &MainWindow::walletRebuildCompleted, Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(),
+          &WalletAdapter::walletConsolidationSuggestedSignal,
+          this, &MainWindow::showPqConsolidationSuggestion,
+          Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(),
+          &WalletAdapter::walletConsolidationCompletedSignal,
+          this, &MainWindow::showPqConsolidationResult,
+          Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletTransactionCreatedSignal, this, [this]() {
       QApplication::alert(this);
   });
@@ -140,6 +150,8 @@ void MainWindow::connectToSignals() {
           this, &MainWindow::enableYubiKeyProtection);
   connect(m_ui->m_addYubiKeyAction, &QAction::triggered,
           this, &MainWindow::addYubiKeyProtectionKey);
+  connect(m_ui->m_autoConsolidationAction, &QAction::toggled,
+          this, &MainWindow::setAutoConsolidation);
   connect(m_ui->m_sendFrame, &SendFrame::uriOpenSignal, this, &MainWindow::onUriOpenSignal, Qt::QueuedConnection);
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::createWalletClickedSignal, this, &MainWindow::createWallet, Qt::QueuedConnection);
   connect(m_ui->m_noWalletFrame, &NoWalletFrame::openWalletClickedSignal, this, &MainWindow::openWallet, Qt::QueuedConnection);
@@ -1138,6 +1150,12 @@ void MainWindow::enableYubiKeyProtection() {
   }
 
   Settings::instance().setTrackingMode(false);
+  Settings::instance().setAutoConsolidationEnabled(false);
+  {
+    const QSignalBlocker blocker(m_ui->m_autoConsolidationAction);
+    m_ui->m_autoConsolidationAction->setChecked(false);
+    m_ui->m_autoConsolidationAction->setEnabled(false);
+  }
   m_ui->m_yubiKeyProtectionAction->setEnabled(false);
   m_ui->m_yubiKeyProtectionAction->setText(tr("YubiKey protected spending enabled"));
   m_ui->m_addYubiKeyAction->setEnabled(true);
@@ -1444,6 +1462,113 @@ void MainWindow::walletSynchronized(int _error, const QString& _error_text) {
   m_syncProgressBar->hide();
 }
 
+void MainWindow::showPqConsolidationSuggestion(
+    quint64 _availableInputs, quint64 _selectedInputs,
+    quint64 _resultingOutputs, quint64 _fee,
+    bool _automatic, bool _requiresHardwareAuthorization) {
+  if (_automatic) {
+    WalletAdapter::instance().consolidatePqOutputs(winId(), true);
+    return;
+  }
+
+  const QString ticker =
+      CurrencyAdapter::instance().getCurrencyTicker().toUpper();
+  QMessageBox dialog(
+      QMessageBox::Warning,
+      tr("Wallet output consolidation"),
+      tr("This wallet has %1 spendable outputs. A transaction can use at most %2 inputs, so a large payment may fail even when the total balance is sufficient.")
+          .arg(_availableInputs)
+          .arg(CryptoNote::parameters::MAX_PQ_INPUTS_PER_TX),
+      QMessageBox::NoButton, this);
+  QString details =
+      tr("The next maintenance transaction will combine %1 inputs into %2 outputs and pay a fee of %3 %4. It sends the remaining value back to this wallet.")
+          .arg(_selectedInputs)
+          .arg(_resultingOutputs)
+          .arg(CurrencyAdapter::instance().formatAmount(_fee))
+          .arg(ticker);
+  details += tr("\n\nPrivacy warning: consolidation publicly links the selected outputs as controlled by the same wallet. It does not increase your balance.");
+  if (_requiresHardwareAuthorization) {
+    details += tr("\n\nThis wallet is YubiKey protected. Automatic signing is disabled; the selected key must authorize this transaction.");
+  }
+  dialog.setInformativeText(details);
+
+  QPushButton* consolidateButton = dialog.addButton(
+      tr("Consolidate now"), QMessageBox::AcceptRole);
+  QPushButton* automaticButton = nullptr;
+  if (!_requiresHardwareAuthorization) {
+    automaticButton = dialog.addButton(
+        tr("Enable automatic consolidation"), QMessageBox::ActionRole);
+  }
+  QPushButton* laterButton = dialog.addButton(
+      tr("Not now"), QMessageBox::RejectRole);
+  dialog.setDefaultButton(consolidateButton);
+  dialog.setEscapeButton(laterButton);
+  dialog.exec();
+
+  if (dialog.clickedButton() == automaticButton && automaticButton != nullptr) {
+    Settings::instance().setAutoConsolidationEnabled(true);
+    {
+      const QSignalBlocker blocker(m_ui->m_autoConsolidationAction);
+      m_ui->m_autoConsolidationAction->setChecked(true);
+    }
+    WalletAdapter::instance().consolidatePqOutputs(winId(), false);
+  } else if (dialog.clickedButton() == consolidateButton) {
+    WalletAdapter::instance().consolidatePqOutputs(winId(), false);
+  } else {
+    WalletAdapter::instance().dismissPqConsolidationSuggestion();
+  }
+}
+
+void MainWindow::showPqConsolidationResult(
+    bool _relayed, const QString& _message,
+    const QString& _transactionHash, quint64 _selectedInputs,
+    quint64 _resultingOutputs, quint64 _fee, bool _automatic) {
+  if (!_relayed) {
+    QMessageBox::warning(
+        this, tr("Wallet output consolidation"), _message);
+    return;
+  }
+
+  const QString summary =
+      tr("Consolidation relayed: %1 inputs became %2 outputs; fee %3 %4.")
+          .arg(_selectedInputs)
+          .arg(_resultingOutputs)
+          .arg(CurrencyAdapter::instance().formatAmount(_fee))
+          .arg(CurrencyAdapter::instance().getCurrencyTicker().toUpper());
+  setStatusBarText(summary);
+  if (!_message.isEmpty()) {
+    QMessageBox::warning(
+        this, tr("Consolidation relayed with a save warning"),
+        summary + tr("\n\nTransaction: %1\n\n%2")
+                      .arg(_transactionHash, _message));
+  } else if (!_automatic) {
+    QMessageBox::information(
+        this, tr("Wallet output consolidation"),
+        summary + tr("\n\nTransaction: %1\n\nThe wallet will wait for confirmation before creating another consolidation transaction.")
+                      .arg(_transactionHash));
+  }
+}
+
+void MainWindow::setAutoConsolidation(bool _on) {
+  if (!_on) {
+    Settings::instance().setAutoConsolidationEnabled(false);
+    return;
+  }
+
+  const QMessageBox::StandardButton answer = QMessageBox::warning(
+      this, tr("Enable automatic consolidation"),
+      tr("Automatic consolidation creates fee-paying self-transactions when this wallet exceeds the per-transaction input limit. Each transaction publicly links its selected outputs as controlled by the same wallet.\n\nEnable it for this wallet file?"),
+      QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+  if (answer != QMessageBox::Yes) {
+    const QSignalBlocker blocker(m_ui->m_autoConsolidationAction);
+    m_ui->m_autoConsolidationAction->setChecked(false);
+    return;
+  }
+
+  Settings::instance().setAutoConsolidationEnabled(true);
+  WalletAdapter::instance().reevaluatePqConsolidation();
+}
+
 void MainWindow::walletOpened(bool _error, const QString& _error_text) {
   if (!_error) {
     const bool yubiKeyProtected = WalletAdapter::instance().isYubiKeyProtected();
@@ -1488,6 +1613,7 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
       action->setEnabled(true);
     }
     if (yubiKeyProtected) {
+      Settings::instance().setAutoConsolidationEnabled(false);
       m_ui->m_miningAction->setEnabled(false);
       m_yubiKeyModeIconLabel->show();
       m_yubiKeyModeIconLabel->setToolTip(
@@ -1501,6 +1627,17 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
           tr("YubiKey migration incomplete"),
           tr("A YubiKey sidecar exists, but this wallet file still contains its spend seed. "
              "This wallet is NOT YubiKey protected. Close the wallet, keep the current files offline until recovery is confirmed, and resolve the orphan .yubikey.json file before retrying."));
+    }
+
+    {
+      const bool automaticAllowed =
+          !WalletAdapter::instance().isTrackingWallet() &&
+          !yubiKeyProtected;
+      const QSignalBlocker blocker(m_ui->m_autoConsolidationAction);
+      m_ui->m_autoConsolidationAction->setEnabled(automaticAllowed);
+      m_ui->m_autoConsolidationAction->setChecked(
+          automaticAllowed &&
+          Settings::instance().isAutoConsolidationEnabled());
     }
 
     setWindowTitle(QString(tr("%1 - Discrete Wallet %2")).arg(Settings::instance().getWalletFile()).arg(Settings::instance().getVersion()));
@@ -1535,6 +1672,11 @@ void MainWindow::walletOpened(bool _error, const QString& _error_text) {
 }
 
 void MainWindow::walletClosed() {
+  {
+    const QSignalBlocker blocker(m_ui->m_autoConsolidationAction);
+    m_ui->m_autoConsolidationAction->setChecked(false);
+    m_ui->m_autoConsolidationAction->setEnabled(false);
+  }
   m_ui->m_backupWalletAction->setEnabled(false);
   m_ui->m_encryptWalletAction->setEnabled(false);
   m_ui->m_changePasswordAction->setEnabled(false);
