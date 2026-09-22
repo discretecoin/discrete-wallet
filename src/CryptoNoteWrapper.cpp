@@ -221,7 +221,10 @@ public:
   }
 
   CryptoNote::IWalletLegacy* createWallet() override {
-    return new CryptoNote::WalletLegacy(m_currency, m_node, m_logManager);
+    auto* wallet = new CryptoNote::WalletLegacy(m_currency, m_node, m_logManager);
+    wallet->setPqLegacyScanWindow(
+        Settings::instance().getPqLegacyScanWindow());
+    return wallet;
   }
 
   System::Dispatcher& getDispatcher() override {
@@ -502,7 +505,10 @@ public:
   }
 
   CryptoNote::IWalletLegacy* createWallet() override {
-    return new CryptoNote::WalletLegacy(m_currency, m_node, m_logManager);
+    auto* wallet = new CryptoNote::WalletLegacy(m_currency, m_node, m_logManager);
+    wallet->setPqLegacyScanWindow(
+        Settings::instance().getPqLegacyScanWindow());
+    return wallet;
   }
 
   System::Dispatcher& getDispatcher() override {

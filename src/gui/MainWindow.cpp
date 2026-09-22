@@ -781,10 +781,15 @@ void MainWindow::rescanWallet() {
   QMessageBox confirmation(
       QMessageBox::Question, tr("Rescan wallet"),
       tr("Rebuild blockchain-derived wallet history while preserving stored "
-         "recipient addresses and payment proofs?"),
+         "recipient addresses and payment proofs?\n\n"
+         "Standard rescan uses this wallet's saved legacy-output range. "
+         "Use Legacy output recovery only for a missed payment sent by "
+         "older wallet software."),
       QMessageBox::NoButton, this);
   QPushButton* rescanButton = confirmation.addButton(
-      tr("Rescan"), QMessageBox::AcceptRole);
+      tr("Standard rescan"), QMessageBox::AcceptRole);
+  QPushButton* legacyRecoveryButton = confirmation.addButton(
+      tr("Legacy output recovery..."), QMessageBox::ActionRole);
   QPushButton* cancelButton = confirmation.addButton(QMessageBox::Cancel);
   confirmation.setDefaultButton(cancelButton);
   confirmation.setEscapeButton(cancelButton);
@@ -792,6 +797,32 @@ void MainWindow::rescanWallet() {
   if (confirmation.clickedButton() == rescanButton &&
       WalletAdapter::instance().canRebuildWallet()) {
     startWalletRebuild(false);
+  } else if (confirmation.clickedButton() == legacyRecoveryButton &&
+             WalletAdapter::instance().canRebuildWallet()) {
+    // The backend window is an exclusive bound with 0 = off, so the highest
+    // recoverable T is window - 1. Suggest the range older wallet builds
+    // always scanned, [0, 64), when nothing is stored for this wallet yet.
+    const quint32 currentWindow =
+        Settings::instance().getPqLegacyScanWindow();
+    const int suggestedHighestT =
+        currentWindow > 1 ? static_cast<int>(currentWindow - 1) : 63;
+    bool accepted = false;
+    const int highestLegacyT = QInputDialog::getInt(
+        this, tr("Legacy output recovery"),
+        tr("Highest legacy routing index T to scan (inclusive).\n\n"
+           "The range is saved for this wallet, so future synchronization "
+           "continues to detect older-format payments without another "
+           "recovery rescan. Larger ranges make legacy fallback scanning "
+           "slower."),
+        suggestedHighestT, 1,
+        static_cast<int>(CryptoNote::WalletLegacy::MAX_PQ_LEGACY_SCAN_WINDOW - 1),
+        1, &accepted);
+    if (accepted) {
+      const quint32 requestedWindow =
+          static_cast<quint32>(highestLegacyT) + 1;
+      Settings::instance().setPqLegacyScanWindow(requestedWindow);
+      startWalletRebuild(false, requestedWindow);
+    }
   }
 }
 
@@ -805,7 +836,8 @@ void MainWindow::resetWallet() {
   }
 }
 
-void MainWindow::startWalletRebuild(bool _destructive) {
+void MainWindow::startWalletRebuild(bool _destructive,
+                                    quint32 _pqLegacyScanWindow) {
   m_ui->m_rescanAction->setEnabled(false);
   m_ui->m_resetAction->setEnabled(false);
   m_rebuildProgressDialog = new QProgressDialog(
@@ -823,9 +855,20 @@ void MainWindow::startWalletRebuild(bool _destructive) {
   m_rebuildProgressDialog->setWindowFlag(Qt::WindowCloseButtonHint, false);
   m_rebuildProgressDialog->show();
 
-  QTimer::singleShot(0, &WalletAdapter::instance(),
-                     _destructive ? &WalletAdapter::reset
-                                  : &WalletAdapter::rescan);
+  if (_destructive) {
+    QTimer::singleShot(0, &WalletAdapter::instance(),
+                       &WalletAdapter::reset);
+  } else if (_pqLegacyScanWindow != 0) {
+    QTimer::singleShot(
+        0, &WalletAdapter::instance(),
+        [_pqLegacyScanWindow]() {
+          WalletAdapter::instance().rescanWithPqLegacyScanWindow(
+              _pqLegacyScanWindow);
+        });
+  } else {
+    QTimer::singleShot(0, &WalletAdapter::instance(),
+                       &WalletAdapter::rescan);
+  }
 }
 
 void MainWindow::walletRebuildCompleted(int _error, const QString& _errorText) {

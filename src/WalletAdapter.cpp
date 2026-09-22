@@ -1010,11 +1010,17 @@ void WalletAdapter::rescan() {
   rebuildWallet(false);
 }
 
+void WalletAdapter::rescanWithPqLegacyScanWindow(
+    quint32 _pqLegacyScanWindow) {
+  rebuildWallet(false, _pqLegacyScanWindow);
+}
+
 void WalletAdapter::reset() {
   rebuildWallet(true);
 }
 
-void WalletAdapter::rebuildWallet(bool _destructive) {
+void WalletAdapter::rebuildWallet(bool _destructive,
+                                  quint32 _pqLegacyScanWindow) {
   Q_CHECK_PTR(m_wallet);
 
   waitForRebuildWorker();
@@ -1070,10 +1076,18 @@ void WalletAdapter::rebuildWallet(bool _destructive) {
   // a predictable plaintext or encrypted temporary wallet file.
   CryptoNote::IWalletLegacy* wallet = m_wallet;
   const QString walletPath = Settings::instance().getWalletFile();
-  m_rebuildWorker = std::thread([this, wallet, walletPath, _destructive]() {
+  m_rebuildWorker = std::thread(
+      [this, wallet, walletPath, _destructive, _pqLegacyScanWindow]() {
     try {
       if (_destructive) {
         wallet->reset();
+      } else if (_pqLegacyScanWindow != 0) {
+        auto* concrete = dynamic_cast<CryptoNote::WalletLegacy*>(wallet);
+        if (concrete == nullptr) {
+          throw std::runtime_error(
+              "legacy output recovery requires WalletLegacy");
+        }
+        concrete->rescanWithPqLegacyScanWindow(_pqLegacyScanWindow);
       } else {
         wallet->rescan();
       }

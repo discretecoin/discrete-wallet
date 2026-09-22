@@ -17,6 +17,7 @@
 #include "CurrencyAdapter.h"
 #include "CryptoNoteWalletConfig.h"
 #include "Settings.h"
+#include "WalletLegacy/WalletLegacy.h"
 
 namespace WalletGui {
 
@@ -30,6 +31,7 @@ Q_DECL_CONSTEXPR char OPTION_DAEMON_PORT[] = "daemonPort";
 Q_DECL_CONSTEXPR char OPTION_REMOTE_NODE[] = "remoteNode";
 const char OPTION_WALLET_THEME[] = "theme";
 const char OPTION_AUTO_CONSOLIDATION_WALLETS[] = "autoConsolidationWallets";
+const char OPTION_PQ_LEGACY_SCAN_WINDOWS[] = "pqLegacyScanWindows";
 
 Qt::CaseSensitivity walletPathCaseSensitivity() {
 #ifdef Q_OS_WIN
@@ -54,6 +56,21 @@ const char OPTION_WALLET_RPC_PASSWORD[] = "walletRpcPassword";
 // seed nodes exist; until then, users pick "embedded" or configure their own.
 const QVector<NodeSetting> DEFAULT_NODES_LIST = {
 };
+
+namespace {
+
+QString walletSettingsKey(const QString& walletFile) {
+  if (walletFile.isEmpty()) {
+    return QString();
+  }
+  QString key = QDir::cleanPath(QFileInfo(walletFile).absoluteFilePath());
+#ifdef Q_OS_WIN
+  key = key.toLower();
+#endif
+  return key;
+}
+
+} // namespace
 
 Settings& Settings::instance() {
   static Settings inst;
@@ -201,6 +218,25 @@ QDir Settings::getDataDir() const {
 quint32 Settings::getRollBack() const {
   Q_CHECK_PTR(m_cmdLineParser);
   return m_cmdLineParser->rollBack();
+}
+
+quint32 Settings::getPqLegacyScanWindow() const {
+  // 0 = the backend default: no legacy nonzero-T enumeration. Current-format
+  // and legacy T=0 receipts are always recognized without it.
+  const QString key = walletSettingsKey(getWalletFile());
+  if (key.isEmpty()) {
+    return 0;
+  }
+
+  const QJsonObject windows =
+      m_settings.value(OPTION_PQ_LEGACY_SCAN_WINDOWS).toObject();
+  const int configured = windows.value(key).toInt(0);
+  if (configured < 0 ||
+      configured >
+          static_cast<int>(CryptoNote::WalletLegacy::MAX_PQ_LEGACY_SCAN_WINDOW)) {
+    return 0;
+  }
+  return static_cast<quint32>(configured);
 }
 
 QString Settings::getWalletFile() const {
@@ -684,6 +720,22 @@ void Settings::setMiningThreads(const quint16& _threads) {
   if (_threads != 0) {
     m_settings.insert("miningThreads", _threads);
   }
+  saveSettings();
+}
+
+void Settings::setPqLegacyScanWindow(quint32 _window) {
+  if (_window > CryptoNote::WalletLegacy::MAX_PQ_LEGACY_SCAN_WINDOW) {
+    return;
+  }
+  const QString key = walletSettingsKey(getWalletFile());
+  if (key.isEmpty()) {
+    return;
+  }
+
+  QJsonObject windows =
+      m_settings.value(OPTION_PQ_LEGACY_SCAN_WINDOWS).toObject();
+  windows.insert(key, static_cast<int>(_window));
+  m_settings.insert(OPTION_PQ_LEGACY_SCAN_WINDOWS, windows);
   saveSettings();
 }
 

@@ -56,6 +56,7 @@ public:
   void backup(const QString& _file);
   void autoBackup();
   void rescan();
+  void rescanWithPqLegacyScanWindow(quint32 _pqLegacyScanWindow);
   void reset();
   bool isResetInProgress() const;
   bool canRebuildWallet() const;
@@ -225,7 +226,7 @@ private:
   bool openFile(const QString& _file, bool _read_only,
                 bool _waitForLock = true);
   void closeFile();
-  void rebuildWallet(bool _destructive);
+  void rebuildWallet(bool _destructive, quint32 _pqLegacyScanWindow = 0);
   void completeResetAfterWalletRebuild();
   void notifyAboutLastTransaction();
   QString walletErrorMessage(int _error_code);

@@ -88,6 +88,7 @@ public:
   void recordMinedBlock(quint64 _reward, qint64 _timestamp);
 
   quint32 getRollBack() const;
+  quint32 getPqLegacyScanWindow() const;
 
   bool runWalletRpc() const;
   QString getWalletRpcBindIp() const;
@@ -122,6 +123,7 @@ public:
   void setCurrentRemoteNode(const NodeSetting &remoteNode);
   void setRpcNodesList(const QVector<NodeSetting> &RpcNodesList);
   void setMiningThreads(const quint16& _threads);
+  void setPqLegacyScanWindow(quint32 _window);
 #ifdef Q_OS_WIN
   void setMinimizeToTrayEnabled(bool _enable);
   void setCloseToTrayEnabled(bool _enable);
