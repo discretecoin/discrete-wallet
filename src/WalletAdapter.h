@@ -84,6 +84,11 @@ public:
   void sendTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
                                const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                quint64 _fee);
+  // Executes exactly one useful self-consolidation batch. Automatic mode is
+  // scheduled separately and never bypasses protected-spend authorization.
+  void consolidatePqOutputs(WId _parentWindow, bool _automatic);
+  void dismissPqConsolidationSuggestion();
+  void reevaluatePqConsolidation();
   QString prepareRawTransaction(const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                 quint64 _fee, QString* _errorText = nullptr);
   QString prepareRawTransactionWithSeed(const CryptoPQ::SeedMaster& _seedMaster,
@@ -174,6 +179,10 @@ private:
   QString m_rebuildInitErrorText;
   std::thread m_rebuildWorker;
   std::atomic<bool> m_isSynchronized;
+  std::atomic<bool> m_consolidationCheckQueued;
+  std::atomic<bool> m_consolidationInProgress;
+  std::atomic<bool> m_consolidationPromptOutstanding;
+  std::atomic<bool> m_consolidationRetryBlocked;
   std::atomic<quint64> m_lastWalletTransactionId;
   QTimer m_newTransactionsNotificationTimer;
   QTimer* m_dispatcherTimer = nullptr;
@@ -226,6 +235,8 @@ private:
   void sendTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
                            const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                            quint64 _fee);
+  void schedulePqConsolidationCheck(bool _force = false);
+  void checkPqConsolidation();
   QString prepareRawTransactionImpl(const CryptoPQ::SeedMaster* _seedMaster,
                                     const std::vector<CryptoNote::WalletLegacyTransfer>& _transfers,
                                     quint64 _fee, QString* _errorText);
@@ -248,6 +259,14 @@ Q_SIGNALS:
   void walletTransactionCreatedSignal(CryptoNote::TransactionId _transaction_id);
   void walletSendTransactionCompletedSignal(CryptoNote::TransactionId _transaction_id, int _error, const QString& _error_text);
   void walletTransactionUpdatedSignal(CryptoNote::TransactionId _transaction_id);
+  void walletConsolidationSuggestedSignal(
+      quint64 _availableInputs, quint64 _selectedInputs,
+      quint64 _resultingOutputs, quint64 _fee,
+      bool _automatic, bool _requiresHardwareAuthorization);
+  void walletConsolidationCompletedSignal(
+      bool _relayed, const QString& _message, const QString& _transactionHash,
+      quint64 _selectedInputs, quint64 _resultingOutputs, quint64 _fee,
+      bool _automatic);
   void accountRegistrationCompletedSignal(int _error, const QString& _error_text, const QString& _transaction_hash);
   void walletStateChangedSignal(const QString &_state_text);
 

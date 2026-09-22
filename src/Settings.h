@@ -100,6 +100,9 @@ public:
   bool isMiningOnLaunchEnabled() const;
   bool isTrackingMode() const;
   bool hideEverythingOnLocked() const;
+  // Explicit, per-wallet consent. Consolidation links several existing outputs
+  // on chain, so this is never enabled by default or inherited by another file.
+  bool isAutoConsolidationEnabled() const;
 
 #ifdef Q_OS_WIN
   bool isMinimizeToTrayEnabled() const;
@@ -125,6 +128,7 @@ public:
 #endif
 
   void setHideEverythingOnLocked(bool _hide);
+  void setAutoConsolidationEnabled(bool _enable);
 
   void setRunWalletRpc(bool _enable);
   void setWalletRpcBindIp(const QString& _ip);

@@ -29,6 +29,15 @@ Q_DECL_CONSTEXPR char OPTION_RPCNODES[] = "remoteNodes";
 Q_DECL_CONSTEXPR char OPTION_DAEMON_PORT[] = "daemonPort";
 Q_DECL_CONSTEXPR char OPTION_REMOTE_NODE[] = "remoteNode";
 const char OPTION_WALLET_THEME[] = "theme";
+const char OPTION_AUTO_CONSOLIDATION_WALLETS[] = "autoConsolidationWallets";
+
+Qt::CaseSensitivity walletPathCaseSensitivity() {
+#ifdef Q_OS_WIN
+  return Qt::CaseInsensitive;
+#else
+  return Qt::CaseSensitive;
+#endif
+}
 
 const char LOCALHOST[] = "127.0.0.1";
 const char OPTION_WALLET_RPC[] = "WalletRpc";
@@ -421,6 +430,25 @@ bool Settings::hideEverythingOnLocked() const {
   return m_settings.contains("hideEverythingOnLocked") ? m_settings.value("hideEverythingOnLocked").toBool() : false;
 }
 
+bool Settings::isAutoConsolidationEnabled() const {
+  const QString configuredWalletFile = getWalletFile();
+  if (configuredWalletFile.isEmpty() ||
+      !m_settings.contains(OPTION_AUTO_CONSOLIDATION_WALLETS)) {
+    return false;
+  }
+  const QString walletFile = QDir::cleanPath(
+      QFileInfo(configuredWalletFile).absoluteFilePath());
+  const QJsonArray wallets =
+      m_settings.value(OPTION_AUTO_CONSOLIDATION_WALLETS).toArray();
+  for (const QJsonValue& wallet : wallets) {
+    if (QDir::cleanPath(wallet.toString()).compare(
+            walletFile, walletPathCaseSensitivity()) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool Settings::runWalletRpc() const {
   if (!m_settings.contains(OPTION_WALLET_RPC)) {
     return false;
@@ -765,6 +793,36 @@ void Settings::setHideEverythingOnLocked(bool _hide) {
     m_settings.insert("hideEverythingOnLocked", _hide);
     saveSettings();
   }
+}
+
+void Settings::setAutoConsolidationEnabled(bool _enable) {
+  const QString configuredWalletFile = getWalletFile();
+  if (configuredWalletFile.isEmpty()) {
+    return;
+  }
+  const QString walletFile = QDir::cleanPath(
+      QFileInfo(configuredWalletFile).absoluteFilePath());
+
+  QJsonArray wallets =
+      m_settings.value(OPTION_AUTO_CONSOLIDATION_WALLETS).toArray();
+  QJsonArray updated;
+  bool found = false;
+  for (const QJsonValue& wallet : wallets) {
+    const bool matches = QDir::cleanPath(wallet.toString()).compare(
+        walletFile, walletPathCaseSensitivity()) == 0;
+    if (matches) {
+      found = true;
+      if (!_enable) {
+        continue;
+      }
+    }
+    updated.append(wallet);
+  }
+  if (_enable && !found) {
+    updated.append(walletFile);
+  }
+  m_settings.insert(OPTION_AUTO_CONSOLIDATION_WALLETS, updated);
+  saveSettings();
 }
 
 void Settings::saveSettings() const {
