@@ -675,6 +675,13 @@ if (BUILD_TESTING)
   set_tests_properties(WalletResetConfirmationTests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+  add_executable(TransactionPresentationTests
+    tests/TransactionPresentationTests.cpp
+  )
+  target_include_directories(TransactionPresentationTests PRIVATE src)
+  target_link_libraries(TransactionPresentationTests Qt6::Core)
+  add_test(NAME TransactionPresentationTests COMMAND TransactionPresentationTests)
+
   add_executable(YubiKeySeedStoreTests
     tests/YubiKeySeedStoreTests.cpp
     src/security/YubiKeySeedStore.cpp

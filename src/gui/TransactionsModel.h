@@ -10,9 +10,9 @@
 
 #include <IWalletLegacy.h>
 
-namespace WalletGui {
+#include "TransactionPresentation.h"
 
-enum class TransactionType : quint8 {MINED, INPUT, OUTPUT, INOUT};
+namespace WalletGui {
 
 enum class TransactionState : quint8 {ACTIVE, DELETED, SENDING, CANCELLED, FAILED};
 
