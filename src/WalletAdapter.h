@@ -116,6 +116,7 @@ public:
   bool getMiningKeys(CryptoPQ::KemPublicKey& _viewPub, CryptoPQ::DsaPublicKey& _spendPub, CryptoPQ::DsaSecretKey& _spendSk) const;
 
   bool isOpen() const;
+  bool isSynchronized() const { return m_isSynchronized.load(); }
   bool hasYubiKeyMetadata() const;
   bool isYubiKeyProtected() const;
   int yubiKeyCount() const;
