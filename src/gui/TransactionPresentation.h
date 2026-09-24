@@ -15,6 +15,21 @@ inline qint64 transactionRowAmount(qint64 transactionAmount, bool hasTransfer,
   return hasTransfer ? -transferAmount : transactionAmount;
 }
 
+inline qint64 transactionDisplayAmount(qint64 transactionAmount, quint64 fee,
+                                      bool hasTransfer, qint64 transferAmount) {
+  if (hasTransfer || transactionAmount >= 0 || fee == 0) {
+    return transactionRowAmount(transactionAmount, hasTransfer, transferAmount);
+  }
+
+  // A PQ history row without a saved recipient transfer contains a net debit.
+  // That debit includes the fee, which History displays in a separate column.
+  const quint64 debit = static_cast<quint64>(-(transactionAmount + 1)) + 1;
+  if (fee > debit) {
+    return transactionAmount;
+  }
+  return -static_cast<qint64>(debit - fee);
+}
+
 inline TransactionType transactionTypeForRow(bool isCoinbase, bool isSelfTransfer,
                                              qint64 rowAmount) {
   if (isCoinbase) {
