@@ -388,15 +388,13 @@ QVariant TransactionsModel::getUserRole(const QModelIndex& _index, int _role, Cr
 
   case ROLE_TYPE: {
     QString transactionAddress = _index.data(ROLE_ADDRESS).toString();
-    if(_transaction.isCoinbase) {
-      return static_cast<quint8>(TransactionType::MINED);
-    } else if (!transactionAddress.compare(WalletAdapter::instance().getAddress())) {
-      return static_cast<quint8>(TransactionType::INOUT);
-    } else if (_transaction.totalAmount < 0) {
-      return static_cast<quint8>(TransactionType::OUTPUT);
-    }
-
-    return static_cast<quint8>(TransactionType::INPUT);
+    const bool hasTransfer = _transferId != CryptoNote::WALLET_LEGACY_INVALID_TRANSFER_ID;
+    const qint64 rowAmount = transactionRowAmount(
+        _transaction.totalAmount, hasTransfer, hasTransfer ? _transfer.amount : 0);
+    return static_cast<quint8>(transactionTypeForRow(
+        _transaction.isCoinbase,
+        !transactionAddress.compare(WalletAdapter::instance().getAddress()),
+        rowAmount));
   }
 
   case ROLE_HASH:
@@ -406,7 +404,10 @@ QVariant TransactionsModel::getUserRole(const QModelIndex& _index, int _role, Cr
     return QString::fromStdString(_transfer.address);
 
   case ROLE_AMOUNT:
-    return static_cast<qint64>(_transferId == CryptoNote::WALLET_LEGACY_INVALID_TRANSFER_ID ? _transaction.totalAmount : -_transfer.amount);
+    if (_transferId == CryptoNote::WALLET_LEGACY_INVALID_TRANSFER_ID) {
+      return transactionRowAmount(_transaction.totalAmount, false, 0);
+    }
+    return transactionRowAmount(_transaction.totalAmount, true, _transfer.amount);
 
   case ROLE_ICON: {
     TransactionType transactionType = static_cast<TransactionType>(_index.data(ROLE_TYPE).value<quint8>());
