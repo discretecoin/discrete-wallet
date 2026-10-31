@@ -145,7 +145,7 @@ jobs:
 
       - name: Install other deps
         run: |
-          brew install gcc openssl
+          brew install gcc openssl@3
 
       - name: Build
         id: build
@@ -166,6 +166,7 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
             -DBOOST_ROOT="$BOOST_ROOT" \
             -DBoost_INCLUDE_DIR="$Boost_INCLUDE_DIR" \
             -DBoost_LIBRARY_DIR="$Boost_LIBRARY_DIR" \
