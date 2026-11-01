@@ -405,9 +405,9 @@ QVariant TransactionsModel::getUserRole(const QModelIndex& _index, int _role, Cr
 
   case ROLE_AMOUNT:
     if (_transferId == CryptoNote::WALLET_LEGACY_INVALID_TRANSFER_ID) {
-      return transactionRowAmount(_transaction.totalAmount, false, 0);
+      return transactionDisplayAmount(_transaction.totalAmount, _transaction.fee, false, 0);
     }
-    return transactionRowAmount(_transaction.totalAmount, true, _transfer.amount);
+    return transactionDisplayAmount(_transaction.totalAmount, _transaction.fee, true, _transfer.amount);
 
   case ROLE_ICON: {
     TransactionType transactionType = static_cast<TransactionType>(_index.data(ROLE_TYPE).value<quint8>());

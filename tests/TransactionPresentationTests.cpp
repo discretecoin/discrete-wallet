@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <iostream>
+#include <limits>
 
 #include "gui/TransactionPresentation.h"
 
@@ -19,6 +20,7 @@ bool require(bool condition, const char* message) {
 
 int main() {
   using WalletGui::TransactionType;
+  using WalletGui::transactionDisplayAmount;
   using WalletGui::transactionRowAmount;
   using WalletGui::transactionTypeForRow;
 
@@ -39,5 +41,20 @@ int main() {
   ok = require(transactionTypeForRow(true, false, 500000) ==
                    TransactionType::MINED,
                "coinbase classification must take precedence over amount") && ok;
+  ok = require(transactionDisplayAmount(-500001, 1, false, 0) == -500000,
+               "recovered outgoing row must exclude the separately displayed fee") && ok;
+  ok = require(transactionDisplayAmount(-500001, 1, true, 500000) == -500000,
+               "saved recipient transfer must remain authoritative") && ok;
+  ok = require(transactionDisplayAmount(500000, 1, false, 0) == 500000,
+               "incoming row must not lose the fee") && ok;
+  ok = require(transactionDisplayAmount(-500000, 0, false, 0) == -500000,
+               "zero-fee outgoing row must remain unchanged") && ok;
+  ok = require(transactionDisplayAmount(-1, 1, false, 0) == 0,
+               "fee-only outgoing row must have zero external amount") && ok;
+  ok = require(transactionDisplayAmount(-500000, 500001, false, 0) == -500000,
+               "inconsistent fee must not turn outgoing amount positive") && ok;
+  ok = require(transactionDisplayAmount(std::numeric_limits<qint64>::min(), 1, false, 0) ==
+                   std::numeric_limits<qint64>::min() + 1,
+               "minimum signed debit must not overflow while removing the fee") && ok;
   return ok ? 0 : 1;
 }
