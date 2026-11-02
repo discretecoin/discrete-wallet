@@ -26,6 +26,7 @@
 #include "Settings.h"
 #include "AccountNumber.h"
 #include "PqAddress.h"  // pqAccountFingerprint, decodePqAddress
+#include "AccountNumberSyncPolicy.h"
 #include "QRCodeDialog.h"
 
 #include "ui_accountframe.h"
@@ -96,13 +97,26 @@ AccountFrame::AccountFrame(QWidget* _parent) : QFrame(_parent), m_ui(new Ui::Acc
     Qt::QueuedConnection);
   connect(&WalletAdapter::instance(), &WalletAdapter::walletStateChangedSignal, this, &AccountFrame::updateRegistrationProgressText,
     Qt::QueuedConnection);
+  connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationProgressUpdatedSignal, this,
+    [this](quint64, quint64) {
+      if (m_accountNumber.isEmpty()) {
+        m_accountNumberResolved = false;
+      }
+      updateAccountNumberDisplay();
+    });
   connect(&WalletAdapter::instance(), &WalletAdapter::walletSynchronizationCompletedSignal, this, [this](int _error, const QString&) {
-    if (_error != 0 || !WalletAdapter::instance().isOpen() || m_accountNumberResolved) {
-      return;
+    if (_error == 0) {
+      refreshAccountNumberAfterSync();
     }
-
-    fetchAccountNumber(WalletAdapter::instance().getAddress());
   });
+  connect(&NodeAdapter::instance(), &NodeAdapter::localBlockchainUpdatedSignal, this,
+    [this](quint64) { refreshAccountNumberAfterSync(); });
+  connect(&NodeAdapter::instance(), &NodeAdapter::lastKnownBlockHeightUpdatedSignal, this,
+    [this](quint64) { refreshAccountNumberAfterSync(); });
+  connect(&NodeAdapter::instance(), &NodeAdapter::connectionStatusUpdatedSignal, this,
+    [this](bool) { refreshAccountNumberAfterSync(); });
+  connect(&NodeAdapter::instance(), &NodeAdapter::peerCountUpdatedSignal, this,
+    [this](quintptr) { refreshAccountNumberAfterSync(); });
 
   // Style the account frame with a slightly brighter background
   applyFramePalette();
@@ -235,7 +249,7 @@ void AccountFrame::updateWalletAddress(const QString& _address) {
   m_registrationPending = false;
   m_registrationTransactionHash.clear();
   updateAccountNumberDisplay();
-  fetchAccountNumber(_address);
+  refreshAccountNumberAfterSync();
 }
 
 void AccountFrame::updateAddressDisplay() {
@@ -263,8 +277,32 @@ void AccountFrame::updatePendingBalance(quint64 _balance) {
   m_ui->m_totalBalanceLabel->setText(formatSecondaryBalance(tr("Total"), divideAmount(_balance + actualBalance).first()));
 }
 
+bool AccountFrame::isAccountNumberLookupReady() const {
+  if (!WalletAdapter::instance().isOpen() || NodeAdapter::instance().getNodeType() == NodeType::UNKNOWN) {
+    return false;
+  }
+
+  return accountNumberLookupReady(true, WalletAdapter::instance().isSynchronized(),
+    NodeAdapter::instance().isTrustedResolver(), !NodeAdapter::instance().isOffline(),
+    NodeAdapter::instance().getLastLocalBlockHeight(), NodeAdapter::instance().getLastKnownBlockHeight());
+}
+
+void AccountFrame::refreshAccountNumberAfterSync() {
+  if (m_address.isEmpty()) {
+    return;
+  }
+
+  if (!isAccountNumberLookupReady() && m_accountNumber.isEmpty()) {
+    m_accountNumberResolved = false;
+  }
+  updateAccountNumberDisplay();
+  if (isAccountNumberLookupReady() && !m_accountNumberResolved) {
+    fetchAccountNumber(m_address);
+  }
+}
+
 void AccountFrame::fetchAccountNumber(const QString& _address) {
-  if (_address.isEmpty() || m_accountNumberFetchInProgress) {
+  if (_address.isEmpty() || m_accountNumberFetchInProgress || !isAccountNumberLookupReady()) {
     return;
   }
 
@@ -274,6 +312,7 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
   }
 
   m_accountNumberFetchInProgress = true;
+  updateAccountNumberDisplay();
   const QString requestedAddress = _address;
 
   // Account-number fingerprint (field A) — derived from this wallet's identity keys,
@@ -311,8 +350,9 @@ void AccountFrame::fetchAccountNumber(const QString& _address) {
 
         // In case Node lookups can transiently fail keep the current display and retry on next
         // synchronization completion instead of clearing it.
-        if (ec) {
+        if (ec || !isAccountNumberLookupReady()) {
           m_accountNumberFetchInProgress = false;
+          updateAccountNumberDisplay();
           return;
         }
 
@@ -349,6 +389,9 @@ void AccountFrame::updateAccountNumberDisplay() {
     const bool canRegister = WalletAdapter::instance().isOpen() &&
         !Settings::instance().isTrackingMode() &&
         !WalletAdapter::instance().isYubiKeyProtected();
+    const bool lookupReady = isAccountNumberLookupReady();
+    const bool showRegister = showAccountNumberRegistration(false, m_registrationPending,
+      m_accountNumberResolved, m_accountNumberFetchInProgress, lookupReady, canRegister);
     m_ui->m_accountNumberLabel->clear();
     if (m_registrationPending && canRegister) {
       // We've already submitted a registration tx; show a transient hint
@@ -368,6 +411,17 @@ void AccountFrame::updateAccountNumberDisplay() {
       m_ui->m_registerAccountButton->setVisible(false);
       return;
     }
+    if (canRegister && !showRegister) {
+      m_ui->m_accountNumberLabel->setFont(m_accountNumberStatusFont);
+      m_ui->m_accountNumberLabel->setText(!lookupReady ? tr("Synchronizing...") :
+        m_accountNumberFetchInProgress ? tr("Checking registration...") : tr("Status unavailable"));
+      m_ui->m_accountNumberLabel->setToolTip(tr("Registration is offered only after a synchronized trusted node confirms this account has no number."));
+      m_ui->m_accountNumberLabel->setVisible(true);
+      m_ui->m_copyAccountNumberButton->setVisible(false);
+      m_ui->m_accountNumberQrButton->setVisible(false);
+      m_ui->m_registerAccountButton->setVisible(false);
+      return;
+    }
     m_ui->m_accountNumberLabel->setVisible(!canRegister);
     if (!canRegister) {
       m_ui->m_accountNumberLabel->setFont(m_accountNumberStatusFont);
@@ -376,7 +430,7 @@ void AccountFrame::updateAccountNumberDisplay() {
     }
     m_ui->m_copyAccountNumberButton->setVisible(false);
     m_ui->m_accountNumberQrButton->setVisible(false);
-    m_ui->m_registerAccountButton->setVisible(canRegister);
+    m_ui->m_registerAccountButton->setVisible(showRegister);
   } else {
     m_ui->m_accountNumberLabel->setFont(m_accountNumberFont);
     m_ui->m_accountNumberLabel->setText(m_accountNumber);
@@ -452,6 +506,7 @@ void AccountFrame::accountRegistrationCompleted(int _error, const QString& _erro
     m_registrationTransactionHash.clear();
     updateAccountNumberDisplay();
     QMessageBox::critical(this, tr("Registration failed"), _errorText);
+    refreshAccountNumberAfterSync();
     return;
   }
 
@@ -517,6 +572,13 @@ void AccountFrame::registerAccountNumber() {
     return;
   }
 
+  if (!showAccountNumberRegistration(!m_accountNumber.isEmpty(), m_registrationPending,
+        m_accountNumberResolved, m_accountNumberFetchInProgress,
+        isAccountNumberLookupReady(), true)) {
+    updateAccountNumberDisplay();
+    return;
+  }
+
   QMessageBox messageBox(this);
   messageBox.setWindowTitle(tr("Register Account Number"));
   messageBox.setIcon(QMessageBox::Question);
@@ -534,6 +596,12 @@ void AccountFrame::registerAccountNumber() {
 
   const QPushButton* clickedButton = qobject_cast<QPushButton*>(messageBox.clickedButton());
   if (clickedButton == freeButton || (paidButton != nullptr && clickedButton == paidButton)) {
+    if (!showAccountNumberRegistration(!m_accountNumber.isEmpty(), m_registrationPending,
+          m_accountNumberResolved, m_accountNumberFetchInProgress,
+          isAccountNumberLookupReady(), true)) {
+      updateAccountNumberDisplay();
+      return;
+    }
     // Hide the Register button BEFORE handing off to the wallet so that
     // even if the send takes a moment the user can't double-click it.
     // Consensus only honors the first registration for an identity, so

@@ -682,6 +682,13 @@ if (BUILD_TESTING)
   target_link_libraries(TransactionPresentationTests Qt6::Core)
   add_test(NAME TransactionPresentationTests COMMAND TransactionPresentationTests)
 
+  add_executable(AccountNumberSyncPolicyTests
+    tests/AccountNumberSyncPolicyTests.cpp
+  )
+  target_include_directories(AccountNumberSyncPolicyTests PRIVATE src)
+  target_link_libraries(AccountNumberSyncPolicyTests Qt6::Core)
+  add_test(NAME AccountNumberSyncPolicyTests COMMAND AccountNumberSyncPolicyTests)
+
   add_executable(YubiKeySeedStoreTests
     tests/YubiKeySeedStoreTests.cpp
     src/security/YubiKeySeedStore.cpp

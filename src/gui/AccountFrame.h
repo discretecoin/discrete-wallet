@@ -63,6 +63,8 @@ private:
   void updateActualBalance(quint64 _balance);
   void updatePendingBalance(quint64 _balance);
   void reset();
+  bool isAccountNumberLookupReady() const;
+  void refreshAccountNumberAfterSync();
   void fetchAccountNumber(const QString& _address);
   void updateAccountNumberDisplay();
   void accountRegistrationCompleted(int _error, const QString& _errorText, const QString& _transactionHash);
