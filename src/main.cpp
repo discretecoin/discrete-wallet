@@ -153,11 +153,11 @@ int main(int argc, char* argv[]) {
     return app.exec();
   }
 
-  //Create registry entries for URL execution
-  QSettings discreteKey("HKEY_CLASSES_ROOT\\discrete", QSettings::NativeFormat);
+  // Register the current user's URI handler without requiring elevation.
+  QSettings discreteKey("HKEY_CURRENT_USER\\Software\\Classes\\discrete", QSettings::NativeFormat);
   discreteKey.setValue(".", "Discrete Wallet");
   discreteKey.setValue("URL Protocol", "");
-  QSettings discreteOpenKey("HKEY_CLASSES_ROOT\\discrete\\shell\\open\\command", QSettings::NativeFormat);
+  QSettings discreteOpenKey("HKEY_CURRENT_USER\\Software\\Classes\\discrete\\shell\\open\\command", QSettings::NativeFormat);
   discreteOpenKey.setValue(".", "\"" + QCoreApplication::applicationFilePath().replace("/", "\\") + "\" \"%1\"");
 #endif
 

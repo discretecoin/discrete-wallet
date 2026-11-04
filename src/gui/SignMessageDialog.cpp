@@ -3,12 +3,14 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "SignMessageDialog.h"
+#include "WebsiteLoginDialog.h"
 #include "ui_signmessagedialog.h"
 
 #include <QClipboard>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QTabWidget>
+#include <QMessageBox>
 
 #include "CurrencyAdapter.h"
 #include "WalletAdapter.h"
@@ -56,6 +58,11 @@ void SignMessageDialog::messageChanged() {
   QString message = m_ui->m_messageEdit->toPlainText().toUtf8();
   if (message.isEmpty()) {
     m_ui->m_signatureEdit->clear();
+    return;
+  }
+  if (WebsiteLoginDialog::isReservedLoginMessage(message)) {
+    m_ui->m_signatureEdit->clear();
+    QMessageBox::warning(this, tr("Use website sign-in"), tr("This is a website sign-in request. Do not sign copied sign-in messages. Start on the Discrete Services website and confirm in the wallet sign-in window."));
     return;
   }
   QString sig = WalletAdapter::instance().signMessage(message);
