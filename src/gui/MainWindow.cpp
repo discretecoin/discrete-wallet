@@ -49,6 +49,7 @@
 #include "ImportTrackingKeyDialog.h"
 #include "RestoreFromMnemonicSeedDialog.h"
 #include "SignMessageDialog.h"
+#include "WebsiteLoginDialog.h"
 #include "CurrencyAdapter.h"
 #include "ExitWidget.h"
 #include "NewPasswordDialog.h"
@@ -983,13 +984,22 @@ void MainWindow::verifyMessage() {
 }
 
 void MainWindow::handlePaymentRequest(QString _request) {
+  const bool websiteLogin = WebsiteLoginDialog::isLoginRequest(_request);
+  if (websiteLogin && !WebsiteLoginDialog::isValidLoginRequest(_request)) {
+    showMessage(tr("Start sign-in on the Discrete Services website. The link must contain only its browser intent binding, without a challenge or callback."), QtWarningMsg);
+    return;
+  }
+  if (websiteLogin && QApplication::activeModalWidget() && QApplication::activeModalWidget()->objectName() == "website-login") {
+    QApplication::activeModalWidget()->raise();
+    return;
+  }
   if (WalletAdapter::instance().isOpen() && Settings::instance().isTrackingMode()) {
     m_pendingPaymentRequest.clear();
     isTrackingMode();
     showNormal();
     raise();
     activateWindow();
-    showMessage(tr("A tracking wallet cannot send payments."), QtWarningMsg);
+    showMessage(websiteLogin ? tr("A tracking wallet cannot approve website sign-in.") : tr("A tracking wallet cannot send payments."), QtWarningMsg);
     return;
   }
 
@@ -1023,6 +1033,14 @@ void MainWindow::handlePaymentRequest(QString _request) {
   }
 
   m_pendingPaymentRequest.clear();
+  if (websiteLogin) {
+    showNormal(); raise(); activateWindow();
+    WebsiteLoginDialog dialog(
+        [] { return WalletAdapter::instance().isOpen() ? WalletAdapter::instance().getAddress() : QString(); },
+        [](const QString& message) { return WalletAdapter::instance().signMessage(message); }, WebsiteLoginDialog::loginIntent(_request), this);
+    dialog.exec();
+    return;
+  }
   m_ui->m_sendAction->trigger();
   m_ui->m_sendFrame->parsePaymentRequest(_request);
   showNormal();

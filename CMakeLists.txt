@@ -615,7 +615,15 @@ set_target_properties(QCustomPlot PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
 target_link_libraries(QCustomPlot Qt6::Core Qt6::PrintSupport)
 
 add_executable(${PROJECT_NAME} ${BUILD_PLATFORM} ${BUILD_RESOURCES} ${SOURCES} ${HEADERS} ${UIS} ${RCC})
+set(DISCRETE_WEBSITE_LOGIN_ORIGIN "https://services.discrete.cash" CACHE STRING "Fixed website login origin; loopback is for isolated qualification builds only")
+if(NOT DISCRETE_WEBSITE_LOGIN_ORIGIN STREQUAL "https://services.discrete.cash" AND
+   NOT DISCRETE_WEBSITE_LOGIN_ORIGIN MATCHES "^http://127\\.0\\.0\\.1:[0-9]+$")
+  message(FATAL_ERROR "Website login origin must be the canonical service or explicit IPv4 loopback")
+endif()
+
+
 set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+target_compile_definitions(${PROJECT_NAME} PRIVATE DISCRETE_WEBSITE_LOGIN_ORIGIN="${DISCRETE_WEBSITE_LOGIN_ORIGIN}")
 target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES} ${QTMAIN} ${CRYPTONOTE_LIB} ${QRENCODE_LIB} Mnemonics QCustomPlot)
 if (KARBO_USE_QLEMENTINE)
   target_link_libraries(${PROJECT_NAME} qlementine)
@@ -657,6 +665,18 @@ target_link_libraries(${PROJECT_NAME} Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Netwo
 
 include(CTest)
 if (BUILD_TESTING)
+  add_executable(WebsiteLoginIntegration EXCLUDE_FROM_ALL tests/WebsiteLoginIntegration.cpp src/gui/WebsiteLoginDialog.cpp src/gui/WebsiteLoginDialog.h)
+  target_include_directories(WebsiteLoginIntegration PRIVATE src cryptonote/src cryptonote/include)
+  target_compile_definitions(WebsiteLoginIntegration PRIVATE DISCRETE_WEBSITE_LOGIN_ORIGIN="http://127.0.0.1:38889")
+  target_link_libraries(WebsiteLoginIntegration ${CRYPTONOTE_LIB} Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+
+  add_executable(WebsiteLoginTests tests/WebsiteLoginTests.cpp src/gui/WebsiteLoginDialog.cpp src/gui/WebsiteLoginDialog.h)
+  target_include_directories(WebsiteLoginTests PRIVATE src)
+  target_compile_definitions(WebsiteLoginTests PRIVATE DISCRETE_WEBSITE_LOGIN_ORIGIN="http://127.0.0.1:38890")
+  target_link_libraries(WebsiteLoginTests Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+  add_test(NAME WebsiteLoginTests COMMAND WebsiteLoginTests)
+  set_tests_properties(WebsiteLoginTests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
   add_executable(WalletFileCommitTests
     tests/WalletFileCommitTests.cpp
     src/security/WalletFileCommit.cpp
